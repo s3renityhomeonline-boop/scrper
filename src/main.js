@@ -92,9 +92,41 @@ async function applyMakeFilter(page, makes) {
                 const makeName = make === 'Ram' ? 'RAM' : make;
                 const selector = `#FILTER\\.MAKE_MODEL\\.${makeName}`;
 
-                await page.click(selector, { timeout: 5000 });
-                console.log(`  ✅ Added ${make}`);
-                await page.waitForTimeout(500);
+                // Force stable UI state before clicking (retry up to 3 times)
+                let clicked = false;
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        // Reacquire locator INSIDE loop (React re-renders after each filter)
+                        const locator = page.locator(selector);
+
+                        await locator.waitFor({ state: 'visible', timeout: 5000 });
+                        await locator.scrollIntoViewIfNeeded();
+                        await locator.waitFor({ state: 'attached', timeout: 2000 });
+                        await page.waitForTimeout(300); // Let animations settle
+                        await locator.click({ trial: true, timeout: 2000 }); // Test click first
+
+                        // Click and wait for CarGurus inventory fetch to complete
+                        await Promise.all([
+                            locator.click({ delay: 200, timeout: 5000 }),
+                            page.waitForLoadState('networkidle', { timeout: 10000 })
+                        ]);
+
+                        clicked = true;
+                        console.log(`  ✅ Added ${make}`);
+                        await page.waitForTimeout(500); // Post-fetch settle time
+                        break;
+                    } catch (e) {
+                        if (attempt < 2) {
+                            await page.waitForTimeout(300);
+                            continue;
+                        }
+                        throw e;
+                    }
+                }
+
+                if (!clicked) {
+                    console.log(`  ⚠️ Could not click ${make} after 3 attempts`);
+                }
             } catch (error) {
                 console.log(`  ⚠️ Could not find ${make} checkbox: ${error.message}`);
             }
