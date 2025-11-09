@@ -3,36 +3,60 @@
   "type": "object",
   "schemaVersion": 1,
   "properties": {
-    "startUrls": {
-      "title": "Start URLs",
-      "type": "array",
-      "description": "List of CarGurus URLs to scrape",
-      "default": [
-        {
-          "url": "https://www.cargurus.ca/Cars/l-Used-SUV-Crossover-bg7"
-        }
-      ],
-      "editor": "requestListSources"
+    "location": {
+      "title": "Location (Postal Code)",
+      "type": "string",
+      "description": "Canadian postal code for search location (e.g., H3H for Montreal, M5H for Toronto)",
+      "default": "H3H",
+      "editor": "textfield"
     },
-    "maxConcurrency": {
-      "title": "Max Concurrency",
+    "searchRadius": {
+      "title": "Search Radius (KM)",
       "type": "integer",
-      "description": "Number of parallel browsers (keep at 1 for stealth)",
-      "default": 1,
-      "minimum": 1,
-      "maximum": 5
+      "description": "Search radius in kilometers (recommended: 25, 50, 75, 100, 150, or 200)",
+      "default": 100,
+      "minimum": 25,
+      "maximum": 200
+    },
+    "currentPage": {
+      "title": "Current Page (optional)",
+      "type": "integer",
+      "description": "Manually set which page to scrape. Leave empty for auto-resume.",
+      "editor": "number",
+      "nullable": true
+    },
+    "maxPages": {
+      "title": "Max Pages",
+      "type": "integer",
+      "description": "Maximum number of pages to scrape (safety limit)",
+      "default": 73,
+      "minimum": 1
     },
     "maxResults": {
-      "title": "Max Results",
+      "title": "Cars Per Page",
       "type": "integer",
-      "description": "Maximum number of cars to scrape",
-      "default": 10,
-      "minimum": 1
+      "description": "How many cars to scrape from each page (typically 24)",
+      "default": 24,
+      "minimum": 1,
+      "maximum": 50
+    },
+    "filters": {
+      "title": "Filter Configuration",
+      "type": "object",
+      "description": "Filters to apply via UI automation",
+      "editor": "json",
+      "default": {
+        "makes": ["Ford", "GMC", "Chevrolet", "Toyota", "Cadillac", "Ram", "Jeep"],
+        "bodyTypes": ["SUV / Crossover", "Pickup Truck"],
+        "maxMileage": 140000,
+        "minPrice": 35000,
+        "dealRatings": ["GREAT_PRICE", "GOOD_PRICE", "FAIR_PRICE"]
+      }
     },
     "proxyConfiguration": {
       "title": "Proxy Configuration",
       "type": "object",
-      "description": "Proxy settings (required for stealth)",
+      "description": "Proxy settings (REQUIRED for stealth - use Canadian residential proxies)",
       "editor": "proxy",
       "default": {
         "useApifyProxy": true,
@@ -41,5 +65,5 @@
       }
     }
   },
-  "required": ["startUrls"]
+  "required": ["location"]
 }
