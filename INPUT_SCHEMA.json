@@ -13,9 +13,10 @@
     "searchRadius": {
       "title": "Search Radius (KM)",
       "type": "integer",
-      "description": "Search radius in kilometers",
+      "description": "Search radius in kilometers (recommended: 25, 50, 75, 100, 150, or 200)",
       "default": 100,
-      "enum": [25, 50, 75, 100, 150, 200]
+      "minimum": 25,
+      "maximum": 200
     },
     "currentPage": {
       "title": "Current Page (optional)",
