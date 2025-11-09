@@ -15,13 +15,10 @@ async function applyFilters(page, filters, location, searchRadius) {
     // BODY TYPE FILTER (Add Pickup Truck)
     await applyBodyTypeFilter(page, filters.bodyTypes);
 
-    // MAKE FILTER (Ford, GMC, Chevrolet, Toyota, Cadillac, Ram, Jeep)
-    await applyMakeFilter(page, filters.makes);
-
     // DEAL RATING FILTER (Great/Good/Fair)
     await applyDealRatingFilter(page, filters.dealRatings);
 
-    // Note: Price and Mileage filters handled in n8n
+    // Note: Make, Price, and Mileage filters handled in n8n
     console.log('✅ All filters applied successfully!');
 }
 
@@ -482,12 +479,34 @@ await Actor.main(async () => {
 
                 // Save car data
                 if (carData.vin || carData.title) {
-                    await Actor.pushData({
+                    const dataToSave = {
                         type: 'car_listing',
                         ...carData,
                         scrapedAt: new Date().toISOString()
-                    });
+                    };
+
+                    await Actor.pushData(dataToSave);
                     console.log(`  ✅ Saved to dataset`);
+
+                    // Send to webhook
+                    try {
+                        const webhookUrl = 'https://n8n-production-0d7d.up.railway.app/webhook/cargurus';
+                        const response = await fetch(webhookUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(dataToSave)
+                        });
+
+                        if (response.ok) {
+                            console.log(`  📤 Sent to webhook (${response.status})`);
+                        } else {
+                            console.log(`  ⚠️ Webhook failed: ${response.status}`);
+                        }
+                    } catch (webhookError) {
+                        console.log(`  ⚠️ Webhook error: ${webhookError.message}`);
+                    }
                 } else {
                     console.log(`  ⚠️ No data found - skipping`);
                 }
