@@ -9,7 +9,7 @@ chromium.use(StealthPlugin());
 // FILTER AUTOMATION HELPERS
 // ============================================
 
-async function applyFilters(page, filters, location, searchRadius) {
+async function applyFilters(page, filters) {
     console.log('🎯 Applying UI filters...');
 
     // BODY TYPE FILTER (Add Pickup Truck)
@@ -18,36 +18,10 @@ async function applyFilters(page, filters, location, searchRadius) {
     // DEAL RATING FILTER (Great/Good/Fair)
     await applyDealRatingFilter(page, filters.dealRatings);
 
-    // Note: Make, Price, and Mileage filters handled in n8n
+    // Note: Location, Make, Price, and Mileage filters handled in n8n
     console.log('✅ All filters applied successfully!');
 }
 
-async function applyLocationFilter(page, postalCode, radius) {
-    try {
-        console.log(`📍 Setting location: ${postalCode}, radius: ${radius} km`);
-
-        // Click location button to open modal
-        await page.click('button[data-testid="zipCodeLink"]');
-        await page.waitForTimeout(1000);
-
-        // Find and fill postal code input
-        const locationInput = await page.locator('input[placeholder*="postal"], input[name*="zip"], input[id*="location"]').first();
-        await locationInput.fill(postalCode);
-        await page.waitForTimeout(500);
-
-        // Select search radius
-        await page.selectOption('select[data-testid="select-filter-distance"]', radius.toString());
-        await page.waitForTimeout(500);
-
-        // Click "Update" or "Search" button in modal
-        await page.click('button:has-text("Update"), button:has-text("Search"), button:has-text("Apply")');
-        await page.waitForTimeout(3000); // Wait for results to update
-
-        console.log(`  ✅ Location set to ${postalCode}`);
-    } catch (error) {
-        console.log(`  ⚠️ Location filter error: ${error.message} (continuing...)`);
-    }
-}
 
 async function applyBodyTypeFilter(page, bodyTypes) {
     try {
@@ -214,16 +188,11 @@ await Actor.main(async () => {
     const input = await Actor.getInput();
 
     const {
-        location = 'H3H',
-        searchRadius = 100,
         currentPage = null,
         maxPages = 73,
         maxResults = 24,
         filters = {
-            makes: ['Ford', 'GMC', 'Chevrolet', 'Toyota', 'Cadillac', 'Ram', 'Jeep'],
             bodyTypes: ['SUV / Crossover', 'Pickup Truck'],
-            maxMileage: 140000,
-            minPrice: 35000,
             dealRatings: ['GREAT_PRICE', 'GOOD_PRICE', 'FAIR_PRICE']
         }
     } = input;
@@ -244,7 +213,6 @@ await Actor.main(async () => {
     }
 
     console.log(`📄 Scraping page: ${pageToScrape} of ${maxPages}`);
-    console.log(`📍 Location: ${location} (${searchRadius} km radius)`);
     console.log(`📊 Max results per page: ${maxResults}`);
 
     // Launch browser with stealth
@@ -263,8 +231,6 @@ await Actor.main(async () => {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         locale: 'en-CA',
         timezoneId: 'America/Toronto',
-        geolocation: { longitude: -79.3832, latitude: 43.6532 },
-        permissions: ['geolocation'],
     });
 
     const page = await context.newPage();
@@ -290,7 +256,7 @@ await Actor.main(async () => {
         await page.waitForTimeout(1000);
 
         // STEP 2: Apply all filters via UI
-        await applyFilters(page, filters, location, searchRadius);
+        await applyFilters(page, filters);
 
         // STEP 3: Get the filtered URL with searchId
         await page.waitForTimeout(3000);
@@ -425,7 +391,6 @@ await Actor.main(async () => {
                         bodyType: listing.bodyType,
                         url: carUrl,
                         pageNumber: pageToScrape,
-                        location: location,
                         source: 'api',
                         hasApiData: true
                     };
@@ -466,7 +431,6 @@ await Actor.main(async () => {
                         };
                     });
                     carData.pageNumber = pageToScrape;
-                    carData.location = location;
                 }
 
                 console.log(`  VIN: ${carData.vin || 'NOT FOUND'}`);
@@ -526,7 +490,6 @@ await Actor.main(async () => {
         await Actor.setValue('SCRAPER_STATE', {
             nextPage,
             baseUrl: baseUrlWithFilters,
-            location,
             lastScraped: new Date().toISOString(),
             lastPage: pageToScrape
         });
