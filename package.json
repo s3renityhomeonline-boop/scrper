@@ -1,6 +1,7 @@
 {
   "name": "cargurus-stealth-scraper",
   "version": "1.0.0",
+  "type": "module",
   "description": "Advanced CarGurus scraper with stealth and network interception",
   "main": "src/main.js",
   "scripts": {

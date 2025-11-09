@@ -138,34 +138,43 @@ await Actor.main(async () => {
                 try {
                     const carPage = await context.newPage();
 
-                    // Track the detailListingJson API call
+                    // Track the detailListingJson API call - parse JSON IMMEDIATELY
                     let detailListingData = null;
+                    let apiResolved = false;
+
                     const detailListingPromise = new Promise((resolve) => {
                         carPage.on('response', async (response) => {
+                            if (apiResolved) return; // Already got it
+
                             const url = response.url();
 
                             // THIS is the API call with ALL the car data!
                             if (url.includes('detailListingJson.action')) {
+                                console.log(`📡 Intercepted API call: detailListingJson.action`);
                                 try {
-                                    const contentType = response.headers()['content-type'] || '';
-                                    if (contentType.includes('application/json')) {
-                                        const data = await response.json();
-                                        console.log(`📡 Intercepted API call: detailListingJson.action`);
-                                        detailListingData = data;
-                                        resolve(data);
-                                    }
+                                    // CRITICAL: Parse JSON IMMEDIATELY before page closes
+                                    const data = await response.json();
+                                    detailListingData = data;
+                                    apiResolved = true;
+                                    resolve(data);
                                 } catch (e) {
                                     console.log(`⚠️ Failed to parse API response: ${e.message}`);
+                                    resolve(null);
                                 }
                             }
                         });
 
-                        // Timeout after 15 seconds if API doesn't arrive
-                        setTimeout(() => resolve(null), 15000);
+                        // Timeout after 35 seconds if API doesn't arrive
+                        setTimeout(() => {
+                            if (!apiResolved) {
+                                console.log('⚠️ API timeout - extracting from DOM');
+                                resolve(null);
+                            }
+                        }, 35000);
                     });
 
                     await carPage.goto(carUrl, {
-                        waitUntil: 'networkidle',
+                        waitUntil: 'domcontentloaded', // Don't wait for ads
                         timeout: 60000
                     });
 
