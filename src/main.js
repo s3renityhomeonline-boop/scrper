@@ -15,10 +15,13 @@ async function applyFilters(page, filters, location, searchRadius) {
     // BODY TYPE FILTER (Add Pickup Truck)
     await applyBodyTypeFilter(page, filters.bodyTypes);
 
+    // MAKE FILTER (Ford, GMC, Chevrolet, Toyota, Cadillac, Ram, Jeep)
+    await applyMakeFilter(page, filters.makes);
+
     // DEAL RATING FILTER (Great/Good/Fair)
     await applyDealRatingFilter(page, filters.dealRatings);
 
-    // Note: Make, Price, and Mileage filters handled in n8n
+    // Note: Price and Mileage filters handled in n8n
     console.log('✅ All filters applied successfully!');
 }
 
@@ -82,34 +85,18 @@ async function applyMakeFilter(page, makes) {
         await page.click('#MakeAndModel-accordion-trigger');
         await page.waitForTimeout(1500);
 
-        // Click checkboxes for each make
+        // Click checkboxes for each make using exact ID pattern
         for (const make of makes) {
             try {
-                // Try multiple selector patterns
-                const selectors = [
-                    `button[id*="${make.toUpperCase()}"]`,
-                    `label:has-text("${make}")`,
-                    `button[aria-label*="${make}"]`
-                ];
+                // Handle special cases (Ram -> RAM)
+                const makeName = make === 'Ram' ? 'RAM' : make;
+                const selector = `#FILTER\\.MAKE_MODEL\\.${makeName}`;
 
-                let clicked = false;
-                for (const selector of selectors) {
-                    try {
-                        await page.click(selector, { timeout: 2000 });
-                        clicked = true;
-                        console.log(`  ✅ Added ${make}`);
-                        await page.waitForTimeout(300);
-                        break;
-                    } catch (e) {
-                        continue;
-                    }
-                }
-
-                if (!clicked) {
-                    console.log(`  ⚠️ Could not find ${make} checkbox`);
-                }
+                await page.click(selector, { timeout: 5000 });
+                console.log(`  ✅ Added ${make}`);
+                await page.waitForTimeout(500);
             } catch (error) {
-                console.log(`  ⚠️ Error clicking ${make}: ${error.message}`);
+                console.log(`  ⚠️ Could not find ${make} checkbox: ${error.message}`);
             }
         }
 
