@@ -75,12 +75,18 @@ await Actor.main(async () => {
         try {
             // Navigate with realistic timing
             await page.goto(url, {
-                waitUntil: 'networkidle',
+                waitUntil: 'domcontentloaded',
                 timeout: 90000
             });
 
             console.log('⏳ Waiting for page to load...');
             await page.waitForTimeout(5000);
+
+            // Debug: Check what page we landed on
+            const currentUrl = page.url();
+            const pageTitle = await page.title();
+            console.log(`📍 Current URL: ${currentUrl}`);
+            console.log(`📄 Page title: ${pageTitle}`);
 
             // Simulate human behavior
             console.log('🖱️ Simulating human behavior...');
@@ -112,6 +118,29 @@ await Actor.main(async () => {
             });
 
             console.log(`🚗 Found ${carLinks.length} car links on page`);
+
+            // If no links found, debug the page
+            if (carLinks.length === 0) {
+                console.log('⚠️ No car links found - debugging page...');
+
+                // Save screenshot
+                await Actor.setValue('debug-screenshot.png', await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
+
+                // Check for common blocking indicators
+                const pageDebug = await page.evaluate(() => {
+                    return {
+                        bodyText: document.body.innerText.substring(0, 500),
+                        h1Text: document.querySelector('h1')?.innerText || 'No H1',
+                        hasCaptcha: !!document.querySelector('[class*="captcha"]'),
+                        hasBlocking: document.body.innerText.toLowerCase().includes('blocked') ||
+                                     document.body.innerText.toLowerCase().includes('access denied'),
+                        linkCount: document.querySelectorAll('a').length,
+                        vdpLinkCount: document.querySelectorAll('a[href*="vdp"]').length
+                    };
+                });
+
+                console.log('🔍 Page debug:', JSON.stringify(pageDebug, null, 2));
+            }
 
             // Check intercepted API responses
             console.log(`📡 Intercepted ${apiResponses.length} API responses`);
