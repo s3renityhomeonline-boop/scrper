@@ -12,52 +12,13 @@ chromium.use(StealthPlugin());
 async function applyFilters(page, filters, location, searchRadius) {
     console.log('🎯 Applying UI filters...');
 
-    // 1. LOCATION FILTER - SKIPPED (using default location from URL)
-    // await applyLocationFilter(page, location, searchRadius);
-
-    // 2. BODY TYPE FILTER (Add Pickup Truck)
+    // BODY TYPE FILTER (Add Pickup Truck)
     await applyBodyTypeFilter(page, filters.bodyTypes);
 
-    // 3. MAKE & MODEL FILTER
-    await applyMakeFilter(page, filters.makes);
-
-    // 4. PRICE FILTER
-    await applyPriceFilter(page, filters.minPrice);
-
-    // 5. MILEAGE FILTER
-    await applyMileageFilter(page, filters.maxMileage);
-
-    // 6. DEAL RATING FILTER
+    // DEAL RATING FILTER (Great/Good/Fair)
     await applyDealRatingFilter(page, filters.dealRatings);
 
     console.log('✅ All filters applied successfully!');
-}
-
-async function applyLocationFilter(page, postalCode, radius) {
-    try {
-        console.log(`📍 Setting location: ${postalCode}, radius: ${radius} km`);
-
-        // Click location button to open modal
-        await page.click('button[data-testid="zipCodeLink"]');
-        await page.waitForTimeout(1000);
-
-        // Find and fill postal code input
-        const locationInput = await page.locator('input[placeholder*="postal"], input[name*="zip"], input[id*="location"]').first();
-        await locationInput.fill(postalCode);
-        await page.waitForTimeout(500);
-
-        // Select search radius
-        await page.selectOption('select[data-testid="select-filter-distance"]', radius.toString());
-        await page.waitForTimeout(500);
-
-        // Click "Update" or "Search" button in modal
-        await page.click('button:has-text("Update"), button:has-text("Search"), button:has-text("Apply")');
-        await page.waitForTimeout(3000); // Wait for results to update
-
-        console.log(`  ✅ Location set to ${postalCode}`);
-    } catch (error) {
-        console.log(`  ⚠️ Location filter error: ${error.message} (continuing...)`);
-    }
 }
 
 async function applyBodyTypeFilter(page, bodyTypes) {
@@ -82,97 +43,6 @@ async function applyBodyTypeFilter(page, bodyTypes) {
         await page.waitForTimeout(2000); // Wait for results to update
     } catch (error) {
         console.log(`  ⚠️ Body type filter error: ${error.message} (continuing...)`);
-    }
-}
-
-async function applyMakeFilter(page, makes) {
-    try {
-        console.log(`🏭 Setting makes: ${makes.join(', ')}`);
-
-        // Open Make & Model accordion
-        await page.click('#MakeAndModel-accordion-trigger');
-        await page.waitForTimeout(1500);
-
-        // Click checkboxes for each make
-        for (const make of makes) {
-            try {
-                // Try multiple selector patterns
-                const selectors = [
-                    `button[id*="${make.toUpperCase()}"]`,
-                    `label:has-text("${make}")`,
-                    `button[aria-label*="${make}"]`
-                ];
-
-                let clicked = false;
-                for (const selector of selectors) {
-                    try {
-                        await page.click(selector, { timeout: 2000 });
-                        clicked = true;
-                        console.log(`  ✅ Added ${make}`);
-                        await page.waitForTimeout(300);
-                        break;
-                    } catch (e) {
-                        continue;
-                    }
-                }
-
-                if (!clicked) {
-                    console.log(`  ⚠️ Could not find ${make} checkbox`);
-                }
-            } catch (error) {
-                console.log(`  ⚠️ Error clicking ${make}: ${error.message}`);
-            }
-        }
-
-        await page.waitForTimeout(2000); // Wait for results to update
-    } catch (error) {
-        console.log(`  ⚠️ Make filter error: ${error.message} (continuing...)`);
-    }
-}
-
-async function applyPriceFilter(page, minPrice) {
-    try {
-        console.log(`💰 Setting min price: $${minPrice}`);
-
-        // Open Price accordion
-        await page.click('#Price-accordion-trigger');
-        await page.waitForTimeout(1000);
-
-        // Find and fill min price input
-        const minPriceInput = await page.locator('input[id*="min"][id*="price"], input[placeholder*="Min"]').first();
-        await minPriceInput.fill(minPrice.toString());
-        await page.waitForTimeout(500);
-
-        // Press Enter or Tab to trigger update
-        await minPriceInput.press('Enter');
-        await page.waitForTimeout(2000);
-
-        console.log(`  ✅ Min price set to $${minPrice}`);
-    } catch (error) {
-        console.log(`  ⚠️ Price filter error: ${error.message} (continuing...)`);
-    }
-}
-
-async function applyMileageFilter(page, maxMileage) {
-    try {
-        console.log(`📏 Setting max mileage: ${maxMileage} km`);
-
-        // Open Mileage accordion
-        await page.click('#Mileage-accordion-trigger');
-        await page.waitForTimeout(1000);
-
-        // Find and fill max mileage input
-        const maxMileageInput = await page.locator('input[id*="max"][id*="mileage"], input[placeholder*="Max"]').first();
-        await maxMileageInput.fill(maxMileage.toString());
-        await page.waitForTimeout(500);
-
-        // Press Enter or Tab to trigger update
-        await maxMileageInput.press('Enter');
-        await page.waitForTimeout(2000);
-
-        console.log(`  ✅ Max mileage set to ${maxMileage} km`);
-    } catch (error) {
-        console.log(`  ⚠️ Mileage filter error: ${error.message} (continuing...)`);
     }
 }
 
@@ -467,16 +337,41 @@ await Actor.main(async () => {
                 console.log(`  VIN: ${carData.vin || 'NOT FOUND'}`);
                 console.log(`  Title: ${carData.title || 'NOT FOUND'}`);
                 console.log(`  Price: ${carData.priceString || carData.price || 'NOT FOUND'}`);
+                console.log(`  Year: ${carData.year || 'NOT FOUND'}`);
+                console.log(`  Mileage: ${carData.mileageString || carData.mileage || 'NOT FOUND'}`);
+                console.log(`  Body Type: ${carData.bodyType || 'NOT FOUND'}`);
                 console.log(`  Source: ${carData.source} (API: ${carData.hasApiData})`);
 
                 // Save car data
                 if (carData.vin || carData.title) {
-                    await Actor.pushData({
+                    const dataToSave = {
                         type: 'car_listing',
                         ...carData,
                         scrapedAt: new Date().toISOString()
-                    });
+                    };
+
+                    await Actor.pushData(dataToSave);
                     console.log(`  ✅ Saved to dataset`);
+
+                    // Send to webhook
+                    try {
+                        const webhookUrl = 'https://n8n-production-0d7d.up.railway.app/webhook/cargurus';
+                        const response = await fetch(webhookUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(dataToSave)
+                        });
+
+                        if (response.ok) {
+                            console.log(`  📤 Sent to webhook (${response.status})`);
+                        } else {
+                            console.log(`  ⚠️ Webhook failed: ${response.status}`);
+                        }
+                    } catch (webhookError) {
+                        console.log(`  ⚠️ Webhook error: ${webhookError.message}`);
+                    }
                 } else {
                     console.log(`  ⚠️ No data found - skipping`);
                 }
