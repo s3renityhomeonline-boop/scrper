@@ -3,11 +3,11 @@
   "type": "object",
   "schemaVersion": 1,
   "properties": {
-    "baseUrl": {
-      "title": "Base URL (with filters)",
+    "filterUrl": {
+      "title": "Filter URL (WITHOUT searchId)",
       "type": "string",
-      "description": "CarGurus URL with filters applied",
-      "default": "https://www.cargurus.ca/Cars/inventorylisting/viewDetailsFilterViewInventoryListing.action?bodyTypeGroupIds=7&bodyTypeGroupIds=5&zip=H3H&distance=100&sortDir=ASC&sortType=DEAL_SCORE&makeModelTrimPaths=m2&makeModelTrimPaths=m26&makeModelTrimPaths=m1&makeModelTrimPaths=m7&makeModelTrimPaths=m22&makeModelTrimPaths=m191&makeModelTrimPaths=m32&maxMileage=140000&minPrice=35000",
+      "description": "CarGurus URL with filters applied. Remove the 'searchId' parameter - it will be generated dynamically each run.",
+      "default": "https://www.cargurus.ca/Cars/inventorylisting/viewDetailsFilterViewInventoryListing.action?bodyTypeGroupIds=7&bodyTypeGroupIds=5&zip=H3H&distance=100&sourceContext=untrackedWithinSite_false_0&adBodyTypeGroupNames=crossover&sortDir=ASC&sortType=DEAL_SCORE&srpVariation=DEFAULT_SEARCH&isDeliveryEnabled=true&nonShippableBaseline=0&entitySelectingHelper.selectedEntity=m2&makeModelTrimPaths=m2&makeModelTrimPaths=m26&makeModelTrimPaths=m1&makeModelTrimPaths=m7&makeModelTrimPaths=m22&makeModelTrimPaths=m191&makeModelTrimPaths=m32&maxMileage=140000&minPrice=35000",
       "editor": "textfield"
     },
     "currentPage": {
@@ -44,5 +44,5 @@
       }
     }
   },
-  "required": ["baseUrl"]
+  "required": ["filterUrl"]
 }
