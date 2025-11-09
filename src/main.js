@@ -80,7 +80,7 @@ await Actor.main(async () => {
             });
 
             console.log('⏳ Waiting for page to load...');
-            await page.waitForTimeout(5000);
+            await page.waitForTimeout(8000); // Increased from 5s to 8s for filters to load
 
             // Debug: Check what page we landed on
             const currentUrl = page.url();
@@ -93,17 +93,17 @@ await Actor.main(async () => {
             await page.mouse.move(100, 200);
             await page.waitForTimeout(500);
             await page.mouse.move(300, 400);
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(1500); // Increased delay before filters
 
             // Apply filters
             console.log('🎯 Applying filters...');
 
             // Body Type Filter - Add Pickup Truck
             try {
-                await page.click('#BodyStyle-accordion-trigger');
-                await page.waitForTimeout(1000);
-                await page.click('button[id*="PICKUP"]');
-                await page.waitForTimeout(2000);
+                await page.click('#BodyStyle-accordion-trigger', { timeout: 10000 });
+                await page.waitForTimeout(1500);
+                await page.click('button[id*="PICKUP"]', { timeout: 10000 });
+                await page.waitForTimeout(2500);
                 console.log('  ✅ Added Pickup Truck');
             } catch (e) {
                 console.log('  ⚠️ Body type filter failed:', e.message);
@@ -111,14 +111,14 @@ await Actor.main(async () => {
 
             // Deal Rating Filter - Great/Good/Fair
             try {
-                await page.click('#DealRating-accordion-trigger');
-                await page.waitForTimeout(1000);
-                await page.click('#FILTER\\.DEAL_RATING\\.GREAT_PRICE');
-                await page.waitForTimeout(500);
-                await page.click('#FILTER\\.DEAL_RATING\\.GOOD_PRICE');
-                await page.waitForTimeout(500);
-                await page.click('#FILTER\\.DEAL_RATING\\.FAIR_PRICE');
-                await page.waitForTimeout(2000);
+                await page.click('#DealRating-accordion-trigger', { timeout: 10000 });
+                await page.waitForTimeout(1500);
+                await page.click('#FILTER\\.DEAL_RATING\\.GREAT_PRICE', { timeout: 10000 });
+                await page.waitForTimeout(800);
+                await page.click('#FILTER\\.DEAL_RATING\\.GOOD_PRICE', { timeout: 10000 });
+                await page.waitForTimeout(800);
+                await page.click('#FILTER\\.DEAL_RATING\\.FAIR_PRICE', { timeout: 10000 });
+                await page.waitForTimeout(3000);
                 console.log('  ✅ Added Deal Ratings (Great/Good/Fair)');
             } catch (e) {
                 console.log('  ⚠️ Deal rating filter failed:', e.message);
