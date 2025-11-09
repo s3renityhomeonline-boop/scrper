@@ -138,22 +138,30 @@ await Actor.main(async () => {
                 try {
                     const carPage = await context.newPage();
 
-                    // Clear previous API responses
-                    const carApiResponses = [];
+                    // Track the detailListingJson API call
+                    let detailListingData = null;
+                    const detailListingPromise = new Promise((resolve) => {
+                        carPage.on('response', async (response) => {
+                            const url = response.url();
 
-                    carPage.on('response', async (response) => {
-                        const url = response.url();
-                        if (url.includes('listing') || url.includes('vdp')) {
-                            try {
-                                const contentType = response.headers()['content-type'] || '';
-                                if (contentType.includes('application/json')) {
-                                    const data = await response.json();
-                                    carApiResponses.push({ url, data });
+                            // THIS is the API call with ALL the car data!
+                            if (url.includes('detailListingJson.action')) {
+                                try {
+                                    const contentType = response.headers()['content-type'] || '';
+                                    if (contentType.includes('application/json')) {
+                                        const data = await response.json();
+                                        console.log(`📡 Intercepted API call: detailListingJson.action`);
+                                        detailListingData = data;
+                                        resolve(data);
+                                    }
+                                } catch (e) {
+                                    console.log(`⚠️ Failed to parse API response: ${e.message}`);
                                 }
-                            } catch (e) {
-                                // Ignore
                             }
-                        }
+                        });
+
+                        // Timeout after 15 seconds if API doesn't arrive
+                        setTimeout(() => resolve(null), 15000);
                     });
 
                     await carPage.goto(carUrl, {
@@ -161,49 +169,89 @@ await Actor.main(async () => {
                         timeout: 60000
                     });
 
-                    await carPage.waitForTimeout(4000);
+                    // Wait for the detailListingJson.action API call
+                    console.log('⏳ Waiting for detailListingJson.action...');
+                    await detailListingPromise;
 
-                    // Extract car data from page
-                    const carData = await carPage.evaluate(() => {
-                        const preflight = window.__PREFLIGHT__ || {};
-                        const listing = preflight.listing || {};
+                    // Extra buffer to ensure data is parsed
+                    await carPage.waitForTimeout(2000);
 
-                        // Find VIN
+                    // Parse data from API response
+                    let carData = {};
+
+                    if (detailListingData && detailListingData.listing) {
+                        const listing = detailListingData.listing;
+
+                        // Extract VIN
                         let vin = listing.vin || null;
-                        if (!vin && listing.specs) {
-                            const vinSpec = listing.specs.find(s =>
-                                s.label && s.label.toLowerCase() === 'vin'
+                        if (!vin && listing.specifications) {
+                            const vinSpec = listing.specifications.find(s =>
+                                s.displayName && s.displayName.toLowerCase() === 'vin'
                             );
-                            if (vinSpec) vin = vinSpec.value;
+                            if (vinSpec) vin = vinSpec.displayValue;
                         }
 
-                        const titleEl = document.querySelector('h1');
-                        const title = titleEl ? titleEl.textContent.trim() : '';
-
-                        return {
+                        carData = {
                             vin,
-                            title: title || preflight.listingTitle,
-                            price: preflight.listingPriceValue || listing.price,
-                            priceString: preflight.listingPriceString || listing.priceString,
-                            year: listing.year || preflight.listingYear,
-                            make: listing.make || preflight.listingMake,
-                            model: listing.model || preflight.listingModel,
-                            trim: listing.trim,
-                            mileage: listing.mileage || listing.odometer,
-                            dealerName: listing.dealerName || preflight.listingSellerName,
-                            dealerCity: listing.dealerCity || preflight.listingSellerCity,
-                            dealRating: listing.dealRating || listing.dealBadge,
+                            title: `${listing.modelYear || ''} ${listing.makeName || ''} ${listing.modelName || ''} ${listing.trimName || ''}`.trim(),
+                            price: listing.expectedPrice || listing.price,
+                            priceString: listing.expectedPriceString || listing.priceString,
+                            year: listing.modelYear,
+                            make: listing.makeName,
+                            model: listing.modelName,
+                            trim: listing.trimName,
+                            mileage: listing.mileage,
+                            mileageString: listing.mileageString,
+                            dealerName: listing.sellerName,
+                            dealerCity: listing.sellerCity,
+                            dealRating: listing.dealBadgeText,
                             bodyType: listing.bodyType,
-                            url: window.location.href,
-                            hasPreflight: !!window.__PREFLIGHT__,
-                            hasListing: !!(window.__PREFLIGHT__ && window.__PREFLIGHT__.listing)
+                            url: carUrl,
+                            source: 'api',
+                            hasApiData: true
                         };
-                    });
+                    } else {
+                        // Fallback: try window.__PREFLIGHT__
+                        carData = await carPage.evaluate(() => {
+                            const preflight = window.__PREFLIGHT__ || {};
+                            const listing = preflight.listing || {};
+
+                            let vin = listing.vin || null;
+                            if (!vin && listing.specs) {
+                                const vinSpec = listing.specs.find(s =>
+                                    s.label && s.label.toLowerCase() === 'vin'
+                                );
+                                if (vinSpec) vin = vinSpec.value;
+                            }
+
+                            const titleEl = document.querySelector('h1');
+                            const title = titleEl ? titleEl.textContent.trim() : '';
+
+                            return {
+                                vin,
+                                title: title || preflight.listingTitle,
+                                price: preflight.listingPriceValue || listing.price,
+                                priceString: preflight.listingPriceString || listing.priceString,
+                                year: listing.year || preflight.listingYear,
+                                make: listing.make || preflight.listingMake,
+                                model: listing.model || preflight.listingModel,
+                                trim: listing.trim,
+                                mileage: listing.mileage || listing.odometer,
+                                dealerName: listing.dealerName || preflight.listingSellerName,
+                                dealerCity: listing.dealerCity || preflight.listingSellerCity,
+                                dealRating: listing.dealRating || listing.dealBadge,
+                                bodyType: listing.bodyType,
+                                url: window.location.href,
+                                source: 'dom',
+                                hasApiData: false
+                            };
+                        });
+                    }
 
                     console.log(`  VIN: ${carData.vin || 'NOT FOUND'}`);
                     console.log(`  Title: ${carData.title || 'NOT FOUND'}`);
-                    console.log(`  Price: ${carData.priceString || 'NOT FOUND'}`);
-                    console.log(`  PREFLIGHT: ${carData.hasPreflight}, LISTING: ${carData.hasListing}`);
+                    console.log(`  Price: ${carData.priceString || carData.price || 'NOT FOUND'}`);
+                    console.log(`  Source: ${carData.source} (API: ${carData.hasApiData})`);
 
                     // Save car data
                     if (carData.vin || carData.title) {
@@ -215,16 +263,6 @@ await Actor.main(async () => {
                         console.log(`  ✅ Saved to dataset`);
                     } else {
                         console.log(`  ⚠️ No data found - skipping`);
-                    }
-
-                    // Save intercepted API responses for this car
-                    if (carApiResponses.length > 0) {
-                        await Actor.pushData({
-                            type: 'car_api_response',
-                            url: carUrl,
-                            apiResponses: carApiResponses,
-                            timestamp: new Date().toISOString()
-                        });
                     }
 
                     await carPage.close();
