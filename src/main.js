@@ -12,8 +12,8 @@ chromium.use(StealthPlugin());
 async function applyFilters(page, filters, location, searchRadius) {
     console.log('🎯 Applying UI filters...');
 
-    // 1. LOCATION FILTER
-    await applyLocationFilter(page, location, searchRadius);
+    // 1. LOCATION FILTER - SKIPPED (using default location from URL)
+    // await applyLocationFilter(page, location, searchRadius);
 
     // 2. BODY TYPE FILTER (Add Pickup Truck)
     await applyBodyTypeFilter(page, filters.bodyTypes);
