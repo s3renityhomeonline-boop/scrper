@@ -3,12 +3,19 @@
   "type": "object",
   "schemaVersion": 1,
   "properties": {
-    "filterUrl": {
-      "title": "Filter URL (WITHOUT searchId)",
+    "location": {
+      "title": "Location (Postal Code)",
       "type": "string",
-      "description": "CarGurus URL with filters applied. Remove the 'searchId' parameter - it will be generated dynamically each run.",
-      "default": "https://www.cargurus.ca/Cars/inventorylisting/viewDetailsFilterViewInventoryListing.action?bodyTypeGroupIds=7&bodyTypeGroupIds=5&zip=H3H&distance=100&sourceContext=untrackedWithinSite_false_0&adBodyTypeGroupNames=crossover&sortDir=ASC&sortType=DEAL_SCORE&srpVariation=DEFAULT_SEARCH&isDeliveryEnabled=true&nonShippableBaseline=0&entitySelectingHelper.selectedEntity=m2&makeModelTrimPaths=m2&makeModelTrimPaths=m26&makeModelTrimPaths=m1&makeModelTrimPaths=m7&makeModelTrimPaths=m22&makeModelTrimPaths=m191&makeModelTrimPaths=m32&maxMileage=140000&minPrice=35000",
+      "description": "Canadian postal code for search location (e.g., H3H for Montreal, M5H for Toronto)",
+      "default": "H3H",
       "editor": "textfield"
+    },
+    "searchRadius": {
+      "title": "Search Radius (KM)",
+      "type": "integer",
+      "description": "Search radius in kilometers",
+      "default": 100,
+      "enum": [25, 50, 75, 100, 150, 200]
     },
     "currentPage": {
       "title": "Current Page (optional)",
@@ -32,6 +39,19 @@
       "minimum": 1,
       "maximum": 50
     },
+    "filters": {
+      "title": "Filter Configuration",
+      "type": "object",
+      "description": "Filters to apply via UI automation",
+      "editor": "json",
+      "default": {
+        "makes": ["Ford", "GMC", "Chevrolet", "Toyota", "Cadillac", "Ram", "Jeep"],
+        "bodyTypes": ["SUV / Crossover", "Pickup Truck"],
+        "maxMileage": 140000,
+        "minPrice": 35000,
+        "dealRatings": ["GREAT_PRICE", "GOOD_PRICE", "FAIR_PRICE"]
+      }
+    },
     "proxyConfiguration": {
       "title": "Proxy Configuration",
       "type": "object",
@@ -44,5 +64,5 @@
       }
     }
   },
-  "required": ["filterUrl"]
+  "required": ["location"]
 }
