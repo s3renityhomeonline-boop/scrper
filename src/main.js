@@ -12,24 +12,13 @@ chromium.use(StealthPlugin());
 async function applyFilters(page, filters, location, searchRadius) {
     console.log('🎯 Applying UI filters...');
 
-    // 1. LOCATION FILTER - SKIPPED (using default location from URL)
-    // await applyLocationFilter(page, location, searchRadius);
-
-    // 2. BODY TYPE FILTER (Add Pickup Truck)
+    // BODY TYPE FILTER (Add Pickup Truck)
     await applyBodyTypeFilter(page, filters.bodyTypes);
 
-    // 3. MAKE & MODEL FILTER
-    await applyMakeFilter(page, filters.makes);
-
-    // 4. PRICE FILTER
-    await applyPriceFilter(page, filters.minPrice);
-
-    // 5. MILEAGE FILTER
-    await applyMileageFilter(page, filters.maxMileage);
-
-    // 6. DEAL RATING FILTER
+    // DEAL RATING FILTER (Great/Good/Fair)
     await applyDealRatingFilter(page, filters.dealRatings);
 
+    // Note: Make, Price, and Mileage filters handled in n8n
     console.log('✅ All filters applied successfully!');
 }
 
@@ -467,6 +456,9 @@ await Actor.main(async () => {
                 console.log(`  VIN: ${carData.vin || 'NOT FOUND'}`);
                 console.log(`  Title: ${carData.title || 'NOT FOUND'}`);
                 console.log(`  Price: ${carData.priceString || carData.price || 'NOT FOUND'}`);
+                console.log(`  Year: ${carData.year || 'NOT FOUND'}`);
+                console.log(`  Mileage: ${carData.mileageString || carData.mileage || 'NOT FOUND'}`);
+                console.log(`  Body Type: ${carData.bodyType || 'NOT FOUND'}`);
                 console.log(`  Source: ${carData.source} (API: ${carData.hasApiData})`);
 
                 // Save car data
