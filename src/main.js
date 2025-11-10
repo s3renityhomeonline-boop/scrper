@@ -294,6 +294,26 @@ await Actor.main(async () => {
                         source: 'api',
                         hasApiData: true
                     };
+
+                    // Fallback: If year or bodyType missing from API, scrape from DOM
+                    if (!carData.year || !carData.bodyType) {
+                        const domData = await carPage.evaluate(() => {
+                            const yearEl = document.querySelector('div[data-cg-ft="year"] span._value_ujq1z_13');
+                            const bodyTypeEl = document.querySelector('div[data-cg-ft="bodyType"] span._value_ujq1z_13');
+
+                            return {
+                                year: yearEl ? yearEl.textContent.trim() : null,
+                                bodyType: bodyTypeEl ? bodyTypeEl.textContent.trim() : null
+                            };
+                        });
+
+                        if (!carData.year && domData.year) {
+                            carData.year = domData.year;
+                        }
+                        if (!carData.bodyType && domData.bodyType) {
+                            carData.bodyType = domData.bodyType;
+                        }
+                    }
                 } else {
                     // Fallback: try window.__PREFLIGHT__
                     carData = await carPage.evaluate(() => {
@@ -311,12 +331,16 @@ await Actor.main(async () => {
                         const titleEl = document.querySelector('h1');
                         const title = titleEl ? titleEl.textContent.trim() : '';
 
+                        // Extract year and bodyType from DOM
+                        const yearEl = document.querySelector('div[data-cg-ft="year"] span._value_ujq1z_13');
+                        const bodyTypeEl = document.querySelector('div[data-cg-ft="bodyType"] span._value_ujq1z_13');
+
                         return {
                             vin,
                             title: title || preflight.listingTitle,
                             price: preflight.listingPriceValue || listing.price,
                             priceString: preflight.listingPriceString || listing.priceString,
-                            year: listing.year || preflight.listingYear,
+                            year: yearEl ? yearEl.textContent.trim() : (listing.year || preflight.listingYear),
                             make: listing.make || preflight.listingMake,
                             model: listing.model || preflight.listingModel,
                             trim: listing.trim,
@@ -324,7 +348,7 @@ await Actor.main(async () => {
                             dealerName: listing.dealerName || preflight.listingSellerName,
                             dealerCity: listing.dealerCity || preflight.listingSellerCity,
                             dealRating: listing.dealRating || listing.dealBadge,
-                            bodyType: listing.bodyType,
+                            bodyType: bodyTypeEl ? bodyTypeEl.textContent.trim() : listing.bodyType,
                             url: window.location.href,
                             source: 'dom',
                             hasApiData: false
