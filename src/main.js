@@ -297,64 +297,15 @@ await Actor.main(async () => {
 
                     // Fallback: If year or bodyType missing from API, scrape from DOM
                     if (!carData.year || !carData.bodyType) {
-                        console.log('  ⏳ Year/BodyType missing from API, trying DOM extraction...');
+                        const domData = await carPage.evaluate(() => {
+                            const yearEl = document.querySelector('div[data-cg-ft="year"] span._value_ujq1z_13');
+                            const bodyTypeEl = document.querySelector('div[data-cg-ft="bodyType"] span._value_ujq1z_13');
 
-                        // Wait for DOM to fully render (Fix #1: Timing)
-                        await carPage.waitForTimeout(2000);
-
-                        // Retry logic with better selectors (Fix #2 & #3)
-                        let domData = { year: null, bodyType: null };
-
-                        for (let attempt = 1; attempt <= 3; attempt++) {
-                            domData = await carPage.evaluate(() => {
-                                // More stable selectors - just look for data-cg-ft, then any span inside
-                                const yearDiv = document.querySelector('div[data-cg-ft="year"]');
-                                const bodyTypeDiv = document.querySelector('div[data-cg-ft="bodyType"]');
-
-                                let year = null;
-                                let bodyType = null;
-
-                                if (yearDiv) {
-                                    // Find any span with the value (avoid fragile class names)
-                                    const spans = yearDiv.querySelectorAll('span');
-                                    for (const span of spans) {
-                                        const text = span.textContent.trim();
-                                        // Look for year pattern (4 digits)
-                                        if (/^\d{4}$/.test(text)) {
-                                            year = text;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                if (bodyTypeDiv) {
-                                    // Find any span with the value
-                                    const spans = bodyTypeDiv.querySelectorAll('span');
-                                    for (const span of spans) {
-                                        const text = span.textContent.trim();
-                                        // Skip the label "Body type:"
-                                        if (text && text !== 'Body type:' && text.length > 3) {
-                                            bodyType = text;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                return { year, bodyType };
-                            });
-
-                            // If we got both, break out
-                            if ((!carData.year || domData.year) && (!carData.bodyType || domData.bodyType)) {
-                                console.log(`  ✅ DOM extraction successful (attempt ${attempt})`);
-                                break;
-                            }
-
-                            // If not, wait and retry
-                            if (attempt < 3) {
-                                console.log(`  ⚠️ DOM extraction attempt ${attempt} incomplete, retrying...`);
-                                await carPage.waitForTimeout(1500);
-                            }
-                        }
+                            return {
+                                year: yearEl ? yearEl.textContent.trim() : null,
+                                bodyType: bodyTypeEl ? bodyTypeEl.textContent.trim() : null
+                            };
+                        });
 
                         if (!carData.year && domData.year) {
                             carData.year = domData.year;
@@ -380,40 +331,16 @@ await Actor.main(async () => {
                         const titleEl = document.querySelector('h1');
                         const title = titleEl ? titleEl.textContent.trim() : '';
 
-                        // Extract year and bodyType from DOM with stable selectors
-                        let year = null;
-                        let bodyType = null;
-
-                        const yearDiv = document.querySelector('div[data-cg-ft="year"]');
-                        if (yearDiv) {
-                            const spans = yearDiv.querySelectorAll('span');
-                            for (const span of spans) {
-                                const text = span.textContent.trim();
-                                if (/^\d{4}$/.test(text)) {
-                                    year = text;
-                                    break;
-                                }
-                            }
-                        }
-
-                        const bodyTypeDiv = document.querySelector('div[data-cg-ft="bodyType"]');
-                        if (bodyTypeDiv) {
-                            const spans = bodyTypeDiv.querySelectorAll('span');
-                            for (const span of spans) {
-                                const text = span.textContent.trim();
-                                if (text && text !== 'Body type:' && text.length > 3) {
-                                    bodyType = text;
-                                    break;
-                                }
-                            }
-                        }
+                        // Extract year and bodyType from DOM
+                        const yearEl = document.querySelector('div[data-cg-ft="year"] span._value_ujq1z_13');
+                        const bodyTypeEl = document.querySelector('div[data-cg-ft="bodyType"] span._value_ujq1z_13');
 
                         return {
                             vin,
                             title: title || preflight.listingTitle,
                             price: preflight.listingPriceValue || listing.price,
                             priceString: preflight.listingPriceString || listing.priceString,
-                            year: year || listing.year || preflight.listingYear,
+                            year: yearEl ? yearEl.textContent.trim() : (listing.year || preflight.listingYear),
                             make: listing.make || preflight.listingMake,
                             model: listing.model || preflight.listingModel,
                             trim: listing.trim,
@@ -421,7 +348,7 @@ await Actor.main(async () => {
                             dealerName: listing.dealerName || preflight.listingSellerName,
                             dealerCity: listing.dealerCity || preflight.listingSellerCity,
                             dealRating: listing.dealRating || listing.dealBadge,
-                            bodyType: bodyType || listing.bodyType,
+                            bodyType: bodyTypeEl ? bodyTypeEl.textContent.trim() : listing.bodyType,
                             url: window.location.href,
                             source: 'dom',
                             hasApiData: false
