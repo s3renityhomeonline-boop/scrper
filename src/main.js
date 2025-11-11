@@ -132,20 +132,29 @@ await Actor.main(async () => {
 
     console.log('🚀 Starting CarGurus Stealth Scraper with UI Filters...');
 
-    // Get or initialize page state
-    let pageToScrape = currentPage;
-    if (!pageToScrape) {
+    // Get or initialize page state - now we scrape 2 pages per run
+    let startPage = currentPage;
+    if (!startPage) {
         const state = await Actor.getValue('SCRAPER_STATE') || {};
-        pageToScrape = state.nextPage || 1;
+        startPage = state.nextPage || 1;
+    }
+
+    // Calculate the 2-page batch
+    const pagesToScrape = [];
+    for (let i = 0; i < 2; i++) {
+        const pageNum = startPage + i;
+        if (pageNum <= maxPages) {
+            pagesToScrape.push(pageNum);
+        }
     }
 
     // Safety check
-    if (pageToScrape > maxPages) {
+    if (pagesToScrape.length === 0) {
         console.log(`✅ All pages scraped! (Last page: ${maxPages})`);
         return;
     }
 
-    console.log(`📄 Scraping page: ${pageToScrape} of ${maxPages}`);
+    console.log(`📄 Scraping ${pagesToScrape.length} pages this run: ${pagesToScrape.join(', ')} of ${maxPages} total`);
     console.log(`📍 Location: ${location} (${searchRadius} km radius)`);
     console.log(`📊 Max results per page: ${maxResults}`);
 
@@ -191,7 +200,7 @@ await Actor.main(async () => {
         await page.mouse.move(300, 400);
         await page.waitForTimeout(1000);
 
-        // STEP 2: Apply all filters via UI
+        // STEP 2: Apply all filters via UI (once for all pages)
         await applyFilters(page, filters, location, searchRadius);
 
         // STEP 3: Get the filtered URL with searchId
@@ -201,53 +210,60 @@ await Actor.main(async () => {
 
         console.log(`✅ Filters applied! Generated URL with searchId`);
 
-        // STEP 4: Navigate to specific page if needed
-        if (pageToScrape > 1) {
-            const pageUrl = `${baseUrlWithFilters}#resultsPage=${pageToScrape}`;
-            console.log(`🔄 Navigating to page ${pageToScrape}...`);
-            await page.goto(pageUrl, {
-                waitUntil: 'domcontentloaded',
-                timeout: 90000
-            });
-            await page.waitForTimeout(3000);
-        }
+        // STEP 4-7: Loop through each page in the batch (2 pages)
+        for (const pageToScrape of pagesToScrape) {
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`📄 Processing page ${pageToScrape} of ${maxPages}`);
+            console.log(`${'='.repeat(60)}\n`);
 
-        // STEP 5: Scroll to load car links
-        console.log('📜 Scrolling to load content...');
-        for (let i = 0; i < 3; i++) {
-            await page.evaluate((offset) => {
-                window.scrollTo({
-                    top: offset,
-                    behavior: 'smooth'
+            // Navigate to specific page if needed
+            if (pageToScrape > 1) {
+                const pageUrl = `${baseUrlWithFilters}#resultsPage=${pageToScrape}`;
+                console.log(`🔄 Navigating to page ${pageToScrape}...`);
+                await page.goto(pageUrl, {
+                    waitUntil: 'domcontentloaded',
+                    timeout: 90000
                 });
-            }, (i + 1) * 1000);
-            await page.waitForTimeout(2000);
-        }
+                await page.waitForTimeout(3000);
+            }
 
-        await page.waitForTimeout(3000);
+            // Scroll to load car links
+            console.log('📜 Scrolling to load content...');
+            for (let i = 0; i < 3; i++) {
+                await page.evaluate((offset) => {
+                    window.scrollTo({
+                        top: offset,
+                        behavior: 'smooth'
+                    });
+                }, (i + 1) * 1000);
+                await page.waitForTimeout(2000);
+            }
 
-        // STEP 6: Extract car links
-        const carLinks = await page.evaluate(() => {
-            const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
-            return [...new Set(links.map(a => a.href))];
-        });
+            await page.waitForTimeout(3000);
 
-        console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
+            // Extract car links
+            const carLinks = await page.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
+                return [...new Set(links.map(a => a.href))];
+            });
 
-        // Debug if no links found
-        if (carLinks.length === 0) {
-            console.log('⚠️ No car links found - debugging...');
-            const currentUrl = page.url();
-            const pageTitle = await page.title();
-            console.log(`📍 Current URL: ${currentUrl}`);
-            console.log(`📄 Page title: ${pageTitle}`);
+            console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
 
-            await Actor.setValue('debug-screenshot.png', await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
-        }
+            // Debug if no links found
+            if (carLinks.length === 0) {
+                console.log('⚠️ No car links found - debugging...');
+                const currentUrl = page.url();
+                const pageTitle = await page.title();
+                console.log(`📍 Current URL: ${currentUrl}`);
+                console.log(`📄 Page title: ${pageTitle}`);
 
-        // STEP 7: Visit car detail pages and scrape
-        const linksToVisit = carLinks.slice(0, maxResults);
-        console.log(`📋 Will visit ${linksToVisit.length} car detail pages`);
+                await Actor.setValue(`debug-screenshot-page${pageToScrape}.png`, await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
+                continue; // Skip to next page
+            }
+
+            // Visit car detail pages and scrape
+            const linksToVisit = carLinks.slice(0, maxResults);
+            console.log(`📋 Will visit ${linksToVisit.length} car detail pages`);
 
         for (const carUrl of linksToVisit) {
             console.log(`\n🔍 Visiting car: ${carUrl}`);
@@ -447,20 +463,24 @@ await Actor.main(async () => {
             }
         }
 
-        // Save state for next run
-        const nextPage = pageToScrape + 1;
+        } // End of page loop
+
+        // Save state for next run - save the next batch starting page
+        const lastPageScraped = pagesToScrape[pagesToScrape.length - 1];
+        const nextPage = lastPageScraped + 1;
         await Actor.setValue('SCRAPER_STATE', {
             nextPage,
             baseUrl: baseUrlWithFilters,
             location,
             lastScraped: new Date().toISOString(),
-            lastPage: pageToScrape
+            lastPage: lastPageScraped,
+            pagesScraped: pagesToScrape
         });
 
-        console.log(`\n💾 State saved: Next run will scrape page ${nextPage}`);
+        console.log(`\n💾 State saved: Next run will start at page ${nextPage}`);
 
     } catch (error) {
-        console.error(`❌ Error processing page ${pageToScrape}:`, error.message);
+        console.error(`❌ Error processing pages ${pagesToScrape.join(', ')}:`, error.message);
     }
 
     await browser.close();
