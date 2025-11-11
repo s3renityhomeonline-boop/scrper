@@ -94,45 +94,24 @@ async function applyMakeFilter(page, makes) {
 
         // Open Make & Model accordion
         await page.click('#MakeAndModel-accordion-trigger', { timeout: 360000 });
-        await page.waitForTimeout(600);
+        await page.waitForTimeout(1000);
 
-        // Scroll the accordion content to show all make buttons (faster clicking)
-        console.log('  📜 Scrolling to show all make buttons...');
-        await page.evaluate(() => {
-            const accordion = document.querySelector('#MakeAndModel-accordion-content');
-            if (accordion) {
-                accordion.scrollTo(0, accordion.scrollHeight);
-            }
-        });
-        await page.waitForTimeout(500);
-
-        // Click all makes rapidly with force (don't wait for network after each)
-        console.log('  🚀 Clicking all makes rapidly...');
+        // Click checkbox for each make (stable approach)
         for (const make of makes) {
             try {
                 // Handle special case: RAM needs to be uppercase to match button ID
                 const makeId = make.toUpperCase() === 'RAM' ? 'RAM' : make;
 
-                // Click with force: true to bypass visibility checks, minimal wait
-                const selector = `#FILTER\\.MAKE_MODEL\\.${makeId}`;
-
-                // Scroll button into view first
-                await page.evaluate((sel) => {
-                    const button = document.querySelector(sel);
-                    if (button) button.scrollIntoViewIfNeeded();
-                }, selector);
-
-                await page.click(selector, { force: true, timeout: 360000 });
+                // Click the make button (escape dots in ID selector) with 6-minute timeout
+                await page.click(`#FILTER\\.MAKE_MODEL\\.${makeId}`, { timeout: 360000 });
                 console.log(`  ✅ Added ${make}`);
-                await page.waitForTimeout(200); // Minimal wait between clicks
+                await page.waitForTimeout(500);
             } catch (error) {
                 console.log(`  ⚠️ Could not click ${make}: ${error.message}`);
             }
         }
 
-        // Wait longer at the end for all results to update
-        console.log('  ⏳ Waiting for results to update...');
-        await page.waitForTimeout(4000);
+        await page.waitForTimeout(2000); // Wait for results to update
     } catch (error) {
         console.log(`  ⚠️ Make filter error: ${error.message} (continuing...)`);
     }
