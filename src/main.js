@@ -18,12 +18,7 @@ async function applyFilters(page, filters, location, searchRadius) {
     // 2. BODY TYPE FILTER (Add Pickup Truck)
     await applyBodyTypeFilter(page, filters.bodyTypes);
 
-    // 3. MAKE & MODEL FILTER (Ford, GMC, Chevrolet, etc.)
-    if (filters.makes && filters.makes.length > 0) {
-        await applyMakeFilter(page, filters.makes);
-    }
-
-    // 4. DEAL RATING FILTER (Great/Good/Fair) - LAST
+    // 3. DEAL RATING FILTER (Great/Good/Fair)
     await applyDealRatingFilter(page, filters.dealRatings);
 
     console.log('✅ All filters applied successfully!');
@@ -34,28 +29,28 @@ async function updateLocation(page, postalCode) {
         console.log(`📍 Updating location to: ${postalCode}`);
 
         // Click the location button to open modal
-        await page.click('button[data-testid="zipCodeLink"]', { timeout: 360000 });
-        await page.waitForTimeout(1000);
+        await page.click('button[data-testid="zipCodeLink"]');
+        await page.waitForTimeout(1500);
         console.log('  ✅ Location modal opened');
 
         // Wait for modal and postal code input to be visible
-        await page.waitForSelector('#ZipInput', { state: 'visible', timeout: 360000 });
+        await page.waitForSelector('#ZipInput', { state: 'visible', timeout: 5000 });
 
         // Clear existing value and fill with new postal code
         const zipInput = await page.locator('#ZipInput');
         await zipInput.click();
         await zipInput.fill(''); // Clear first
-        await page.waitForTimeout(200);
-        await zipInput.fill(postalCode);
         await page.waitForTimeout(300);
+        await zipInput.fill(postalCode);
+        await page.waitForTimeout(500);
         console.log(`  ✅ Entered postal code: ${postalCode}`);
 
         // Click the Update button
-        await page.click('button[type="submit"]:has-text("Update")', { timeout: 360000 });
+        await page.click('button[type="submit"]:has-text("Update")');
         console.log('  ✅ Clicked Update button');
 
         // Wait for page to reload and new results to load
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(5000);
         console.log('  ✅ Location updated successfully');
 
     } catch (error) {
@@ -68,52 +63,23 @@ async function applyBodyTypeFilter(page, bodyTypes) {
         console.log(`🚗 Setting body types: ${bodyTypes.join(', ')}`);
 
         // Open Body Style accordion
-        await page.click('#BodyStyle-accordion-trigger', { timeout: 360000 });
-        await page.waitForTimeout(600);
+        await page.click('#BodyStyle-accordion-trigger');
+        await page.waitForTimeout(1000);
 
         // Click checkboxes for each body type
         for (const bodyType of bodyTypes) {
             if (bodyType.includes('Pickup')) {
                 // Find and click Pickup Truck checkbox
-                await page.click('button[id*="PICKUP"], label:has-text("Pickup Truck")', { timeout: 360000 });
-                await page.waitForTimeout(400);
+                await page.click('button[id*="PICKUP"], label:has-text("Pickup Truck")');
+                await page.waitForTimeout(500);
                 console.log('  ✅ Added Pickup Truck');
             }
             // SUV/Crossover is already selected by default on the base URL
         }
 
-        await page.waitForTimeout(1500); // Wait for results to update
-    } catch (error) {
-        console.log(`  ⚠️ Body type filter error: ${error.message} (continuing...)`);
-    }
-}
-
-async function applyMakeFilter(page, makes) {
-    try {
-        console.log(`🏭 Setting makes: ${makes.join(', ')}`);
-
-        // Open Make & Model accordion
-        await page.click('#MakeAndModel-accordion-trigger', { timeout: 360000 });
-        await page.waitForTimeout(1000);
-
-        // Click checkbox for each make (stable approach)
-        for (const make of makes) {
-            try {
-                // Handle special case: RAM needs to be uppercase to match button ID
-                const makeId = make.toUpperCase() === 'RAM' ? 'RAM' : make;
-
-                // Click the make button (escape dots in ID selector) with 6-minute timeout
-                await page.click(`#FILTER\\.MAKE_MODEL\\.${makeId}`, { timeout: 360000 });
-                console.log(`  ✅ Added ${make}`);
-                await page.waitForTimeout(500);
-            } catch (error) {
-                console.log(`  ⚠️ Could not click ${make}: ${error.message}`);
-            }
-        }
-
         await page.waitForTimeout(2000); // Wait for results to update
     } catch (error) {
-        console.log(`  ⚠️ Make filter error: ${error.message} (continuing...)`);
+        console.log(`  ⚠️ Body type filter error: ${error.message} (continuing...)`);
     }
 }
 
@@ -122,68 +88,24 @@ async function applyDealRatingFilter(page, dealRatings) {
         console.log(`⭐ Setting deal ratings: ${dealRatings.join(', ')}`);
 
         // Open Deal Rating accordion
-        await page.click('#DealRating-accordion-trigger', { timeout: 360000 });
-        await page.waitForTimeout(600);
+        await page.click('#DealRating-accordion-trigger');
+        await page.waitForTimeout(1000);
 
         // Click checkboxes for each deal rating
         for (const rating of dealRatings) {
             try {
-                await page.click(`#FILTER\\.DEAL_RATING\\.${rating}`, { timeout: 360000 });
+                await page.click(`#FILTER\\.DEAL_RATING\\.${rating}`);
                 console.log(`  ✅ Added ${rating.replace('_', ' ')}`);
-                await page.waitForTimeout(400);
+                await page.waitForTimeout(300);
             } catch (error) {
                 console.log(`  ⚠️ Could not click ${rating}: ${error.message}`);
             }
         }
 
-        await page.waitForTimeout(1500); // Wait for results to update
+        await page.waitForTimeout(2000); // Wait for results to update
     } catch (error) {
         console.log(`  ⚠️ Deal rating filter error: ${error.message} (continuing...)`);
     }
-}
-
-// ============================================
-// BLOCKING DETECTION
-// ============================================
-
-async function detectBlocking(page, carLinks, pageTitle) {
-    const blockingIndicators = {
-        isBlocked: false,
-        reason: null
-    };
-
-    // PRIMARY CHECK: 0 car links found (most reliable indicator)
-    if (carLinks.length === 0) {
-        blockingIndicators.isBlocked = true;
-        blockingIndicators.reason = '0 car links found after retries';
-        return blockingIndicators; // Return immediately if 0 cars
-    }
-
-    // SECONDARY CHECK: Look for explicit captcha or block elements (only if cars were found)
-    try {
-        const hasBlockElements = await page.evaluate(() => {
-            const body = document.body.textContent || '';
-            const title = document.title || '';
-
-            // Only flag if explicit blocking messages
-            return body.includes('Access Denied') ||
-                   body.includes('captcha') ||
-                   body.includes('unusual traffic') ||
-                   title.includes('Access Denied') ||
-                   title.includes('Blocked');
-        });
-
-        if (hasBlockElements) {
-            blockingIndicators.isBlocked = true;
-            blockingIndicators.reason = 'Explicit block/captcha elements detected';
-        }
-    } catch (error) {
-        // Page might be crashed, consider it blocked
-        blockingIndicators.isBlocked = true;
-        blockingIndicators.reason = 'Page evaluation failed (possible crash)';
-    }
-
-    return blockingIndicators;
 }
 
 // ============================================
@@ -199,7 +121,6 @@ await Actor.main(async () => {
         currentPage = null,
         maxPages = 73,
         maxResults = 24,
-        maxRetries = 3,
         filters = {
             makes: ['Ford', 'GMC', 'Chevrolet', 'Toyota', 'Cadillac', 'Ram', 'Jeep'],
             bodyTypes: ['SUV / Crossover', 'Pickup Truck'],
@@ -236,83 +157,67 @@ await Actor.main(async () => {
     console.log(`📄 Scraping ${pagesToScrape.length} pages this run: ${pagesToScrape.join(', ')} of ${maxPages} total`);
     console.log(`📍 Location: ${location} (${searchRadius} km radius)`);
     console.log(`📊 Max results per page: ${maxResults}`);
-    console.log(`🔄 Max retry attempts: ${maxRetries}`);
 
-    // Retry loop for proxy rotation
-    let attemptNumber = 0;
-    let scrapingSuccessful = false;
-    let lastError = null;
+    // Launch browser with stealth
+    const browser = await chromium.launch({
+        headless: true,
+        args: [
+            '--disable-blink-features=AutomationControlled',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+        ],
+    });
 
-    while (attemptNumber < maxRetries && !scrapingSuccessful) {
-        attemptNumber++;
-        console.log(`\n${'='.repeat(70)}`);
-        console.log(`🔄 ATTEMPT ${attemptNumber}/${maxRetries}`);
-        console.log(`${'='.repeat(70)}\n`);
+    const context = await browser.newContext({
+        viewport: { width: 1920, height: 1080 },
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        locale: 'en-CA',
+        timezoneId: 'America/Toronto',
+        geolocation: { longitude: -79.3832, latitude: 43.6532 },
+        permissions: ['geolocation'],
+    });
 
-        let browser = null;
+    const page = await context.newPage();
 
-        try {
-            // Launch browser with stealth
-            browser = await chromium.launch({
-                headless: true,
-                args: [
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-features=IsolateOrigins,site-per-process',
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor',
-                ],
-            });
+    try {
+        // STEP 1: Navigate to base SUV page
+        const baseUrl = 'https://www.cargurus.ca/Cars/l-Used-SUV-Crossover-bg7';
+        console.log(`\n🌐 Visiting base page: ${baseUrl}`);
 
-            const context = await browser.newContext({
-                viewport: { width: 1920, height: 1080 },
-                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                locale: 'en-CA',
-                timezoneId: 'America/Toronto',
-                geolocation: { longitude: -79.3832, latitude: 43.6532 },
-                permissions: ['geolocation'],
-            });
+        await page.goto(baseUrl, {
+            waitUntil: 'domcontentloaded',
+            timeout: 90000
+        });
 
-            const page = await context.newPage();
+        console.log('⏳ Waiting for page to load...');
+        await page.waitForTimeout(5000);
 
-            // STEP 1: Navigate to base SUV page
-            const baseUrl = 'https://www.cargurus.ca/Cars/l-Used-SUV-Crossover-bg7';
-            console.log(`\n🌐 Visiting base page: ${baseUrl}`);
+        // Simulate human behavior
+        console.log('🖱️ Simulating human behavior...');
+        await page.mouse.move(100, 200);
+        await page.waitForTimeout(500);
+        await page.mouse.move(300, 400);
+        await page.waitForTimeout(1000);
 
-            await page.goto(baseUrl, {
-                waitUntil: 'domcontentloaded',
-                timeout: 90000
-            });
+        // STEP 2: Apply all filters via UI (once for all pages)
+        await applyFilters(page, filters, location, searchRadius);
 
-            console.log('⏳ Waiting for page to load...');
-            await page.waitForTimeout(3000);
+        // STEP 3: Get the filtered URL with searchId
+        await page.waitForTimeout(3000);
+        const filteredUrl = page.url();
+        const baseUrlWithFilters = filteredUrl.split('#')[0];
 
-            // Simulate human behavior
-            console.log('🖱️ Simulating human behavior...');
-            await page.mouse.move(100, 200);
-            await page.waitForTimeout(300);
-            await page.mouse.move(300, 400);
-            await page.waitForTimeout(500);
+        console.log(`✅ Filters applied! Generated URL with searchId`);
 
-            // STEP 2: Apply all filters via UI (once for all pages)
-            await applyFilters(page, filters, location, searchRadius);
+        // Track current page (we start at page 1 after applying filters)
+        let currentPageNumber = 1;
 
-            // STEP 3: Wait for filtered results to load (longer wait for AJAX)
-            console.log('⏳ Waiting for filtered results to load...');
-            await page.waitForTimeout(6000);
-
-            const filteredUrl = page.url();
-            const baseUrlWithFilters = filteredUrl.split('#')[0];
-
-            console.log(`✅ Filters applied! Generated URL with searchId`);
-
-            // Track current page (we start at page 1 after applying filters)
-            let currentPageNumber = 1;
-
-            // STEP 4-7: Loop through each page in the batch (3 pages)
-            for (const pageToScrape of pagesToScrape) {
-                console.log(`\n${'='.repeat(60)}`);
-                console.log(`📄 Processing page ${pageToScrape} of ${maxPages}`);
-                console.log(`${'='.repeat(60)}\n`);
+        // STEP 4-7: Loop through each page in the batch (3 pages)
+        for (const pageToScrape of pagesToScrape) {
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`📄 Processing page ${pageToScrape} of ${maxPages}`);
+            console.log(`${'='.repeat(60)}\n`);
 
             // Navigate to specific page if needed by clicking Next button (human-like)
             if (pageToScrape !== currentPageNumber) {
@@ -363,72 +268,24 @@ await Actor.main(async () => {
                         behavior: 'smooth'
                     });
                 }, (i + 1) * 1000);
-                await page.waitForTimeout(1200);
+                await page.waitForTimeout(2000);
             }
 
-            await page.waitForTimeout(2000);
-
-            // Wait for car links to appear in DOM (explicit wait)
-            console.log('⏳ Waiting for car listings to appear...');
-            try {
-                await page.waitForSelector('a[href*="vdp.action"]', {
-                    state: 'visible',
-                    timeout: 20000
-                });
-                console.log('✅ Car listings loaded!');
-            } catch (error) {
-                console.log('⚠️ Timeout waiting for car listings, will try to extract anyway...');
-                // Continue anyway - maybe they loaded but selector is slightly off
-            }
+            await page.waitForTimeout(3000);
 
             // Extract car links
-            let carLinks = await page.evaluate(() => {
+            const carLinks = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
                 return [...new Set(links.map(a => a.href))];
             });
 
-            // Retry logic if 0 cars found
-            if (carLinks.length === 0) {
-                console.log('⚠️ 0 cars found on first attempt, waiting and retrying...');
-                await page.waitForTimeout(5000);
-
-                // Scroll again to trigger lazy loading
-                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-                await page.waitForTimeout(2000);
-                await page.evaluate(() => window.scrollTo(0, 0));
-                await page.waitForTimeout(2000);
-
-                // Try extracting again
-                carLinks = await page.evaluate(() => {
-                    const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
-                    return [...new Set(links.map(a => a.href))];
-                });
-            }
-
             console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
 
-            // Check for blocking/proxy issues
-            const pageTitle = await page.title();
-            const blockingStatus = await detectBlocking(page, carLinks, pageTitle);
-
-            if (blockingStatus.isBlocked) {
-                console.log(`\n🚫 BLOCKING DETECTED: ${blockingStatus.reason}`);
-                console.log(`📍 Current URL: ${page.url()}`);
-                console.log(`📄 Page title: ${pageTitle}`);
-
-                // Take screenshot for debugging
-                const screenshotName = `blocked-attempt${attemptNumber}-page${pageToScrape}.png`;
-                await Actor.setValue(screenshotName, await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
-                console.log(`📸 Screenshot saved: ${screenshotName}`);
-
-                // Throw error to trigger retry with new proxy
-                throw new Error(`Blocking detected: ${blockingStatus.reason}`);
-            }
-
-            // Debug if no links found (should be caught by blocking detection, but keep as fallback)
+            // Debug if no links found
             if (carLinks.length === 0) {
                 console.log('⚠️ No car links found - debugging...');
                 const currentUrl = page.url();
+                const pageTitle = await page.title();
                 console.log(`📍 Current URL: ${currentUrl}`);
                 console.log(`📄 Page title: ${pageTitle}`);
 
@@ -485,7 +342,7 @@ await Actor.main(async () => {
 
                 console.log('⏳ Waiting for detailListingJson.action...');
                 await detailListingPromise;
-                await carPage.waitForTimeout(1000);
+                await carPage.waitForTimeout(2000);
 
                 // Parse data from API response
                 let carData = {};
@@ -630,8 +487,8 @@ await Actor.main(async () => {
 
                 await carPage.close();
 
-                // Random delay between cars (human-like behavior)
-                await page.waitForTimeout(1500 + Math.random() * 2000);
+                // Random delay between cars
+                await page.waitForTimeout(2000 + Math.random() * 3000);
 
             } catch (error) {
                 console.error(`❌ Error processing car ${carUrl}:`, error.message);
@@ -639,9 +496,6 @@ await Actor.main(async () => {
         }
 
         } // End of page loop
-
-        // If we got here, scraping was successful!
-        scrapingSuccessful = true;
 
         // Save state for next run - save the next batch starting page
         const lastPageScraped = pagesToScrape[pagesToScrape.length - 1];
@@ -656,33 +510,11 @@ await Actor.main(async () => {
         });
 
         console.log(`\n💾 State saved: Next run will start at page ${nextPage}`);
-        console.log(`✅ Attempt ${attemptNumber} successful!`);
 
-        } catch (error) {
-            lastError = error;
-            console.error(`\n❌ Attempt ${attemptNumber} failed: ${error.message}`);
-
-            // If this is not the last attempt, wait before retry
-            if (attemptNumber < maxRetries) {
-                const waitTime = 10000 + (attemptNumber * 10000); // 10s, 20s, 30s...
-                console.log(`⏳ Waiting ${waitTime / 1000} seconds before retry...`);
-                await new Promise(resolve => setTimeout(resolve, waitTime));
-            }
-        } finally {
-            // Always close browser after each attempt
-            if (browser) {
-                await browser.close();
-                console.log('🔒 Browser closed');
-            }
-        }
-    } // End of retry loop
-
-    // Check if all retries failed
-    if (!scrapingSuccessful) {
-        console.error(`\n❌ All ${maxRetries} attempts failed!`);
-        console.error(`Last error: ${lastError?.message}`);
-        throw new Error(`Scraping failed after ${maxRetries} attempts: ${lastError?.message}`);
+    } catch (error) {
+        console.error(`❌ Error processing pages ${pagesToScrape.join(', ')}:`, error.message);
     }
 
+    await browser.close();
     console.log('\n✅ Scraping complete!');
 });
