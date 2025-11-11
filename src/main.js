@@ -152,36 +152,35 @@ async function detectBlocking(page, carLinks, pageTitle) {
         reason: null
     };
 
-    // Check 1: 0 car links found (most common indicator)
+    // PRIMARY CHECK: 0 car links found (most reliable indicator)
     if (carLinks.length === 0) {
         blockingIndicators.isBlocked = true;
-        blockingIndicators.reason = '0 car links found';
+        blockingIndicators.reason = '0 car links found after retries';
+        return blockingIndicators; // Return immediately if 0 cars
     }
 
-    // Check 2: Generic page title (not location-specific)
-    if (pageTitle === 'Used Cars' || pageTitle.includes('Access Denied') || pageTitle.includes('Blocked')) {
-        blockingIndicators.isBlocked = true;
-        blockingIndicators.reason = `Suspicious page title: "${pageTitle}"`;
-    }
-
-    // Check 3: Look for captcha or block elements
+    // SECONDARY CHECK: Look for explicit captcha or block elements (only if cars were found)
     try {
         const hasBlockElements = await page.evaluate(() => {
             const body = document.body.textContent || '';
-            return body.includes('captcha') ||
-                   body.includes('Access Denied') ||
-                   body.includes('blocked') ||
-                   body.includes('unusual traffic');
+            const title = document.title || '';
+
+            // Only flag if explicit blocking messages
+            return body.includes('Access Denied') ||
+                   body.includes('captcha') ||
+                   body.includes('unusual traffic') ||
+                   title.includes('Access Denied') ||
+                   title.includes('Blocked');
         });
 
         if (hasBlockElements) {
             blockingIndicators.isBlocked = true;
-            blockingIndicators.reason = 'Block/captcha elements detected';
+            blockingIndicators.reason = 'Explicit block/captcha elements detected';
         }
     } catch (error) {
         // Page might be crashed, consider it blocked
         blockingIndicators.isBlocked = true;
-        blockingIndicators.reason = 'Page evaluation failed';
+        blockingIndicators.reason = 'Page evaluation failed (possible crash)';
     }
 
     return blockingIndicators;
