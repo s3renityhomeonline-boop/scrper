@@ -218,13 +218,19 @@ await Actor.main(async () => {
 
             // Navigate to specific page if needed
             if (pageToScrape > 1) {
-                const pageUrl = `${baseUrlWithFilters}#resultsPage=${pageToScrape}`;
                 console.log(`🔄 Navigating to page ${pageToScrape}...`);
-                await page.goto(pageUrl, {
-                    waitUntil: 'domcontentloaded',
-                    timeout: 90000
-                });
-                await page.waitForTimeout(3000);
+
+                // Use JavaScript to change hash instead of page.goto() (avoids page crash)
+                await page.evaluate((pageNum) => {
+                    window.location.hash = `resultsPage=${pageNum}`;
+                }, pageToScrape);
+
+                // Wait for new page to load
+                await page.waitForTimeout(5000);
+
+                // Scroll to top to trigger any lazy loading
+                await page.evaluate(() => window.scrollTo(0, 0));
+                await page.waitForTimeout(2000);
             }
 
             // Scroll to load car links
