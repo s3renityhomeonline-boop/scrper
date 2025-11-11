@@ -34,28 +34,28 @@ async function updateLocation(page, postalCode) {
         console.log(`📍 Updating location to: ${postalCode}`);
 
         // Click the location button to open modal
-        await page.click('button[data-testid="zipCodeLink"]');
-        await page.waitForTimeout(1500);
+        await page.click('button[data-testid="zipCodeLink"]', { timeout: 360000 });
+        await page.waitForTimeout(1000);
         console.log('  ✅ Location modal opened');
 
         // Wait for modal and postal code input to be visible
-        await page.waitForSelector('#ZipInput', { state: 'visible', timeout: 5000 });
+        await page.waitForSelector('#ZipInput', { state: 'visible', timeout: 360000 });
 
         // Clear existing value and fill with new postal code
         const zipInput = await page.locator('#ZipInput');
         await zipInput.click();
         await zipInput.fill(''); // Clear first
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(200);
         await zipInput.fill(postalCode);
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
         console.log(`  ✅ Entered postal code: ${postalCode}`);
 
         // Click the Update button
-        await page.click('button[type="submit"]:has-text("Update")');
+        await page.click('button[type="submit"]:has-text("Update")', { timeout: 360000 });
         console.log('  ✅ Clicked Update button');
 
         // Wait for page to reload and new results to load
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(3000);
         console.log('  ✅ Location updated successfully');
 
     } catch (error) {
@@ -68,21 +68,21 @@ async function applyBodyTypeFilter(page, bodyTypes) {
         console.log(`🚗 Setting body types: ${bodyTypes.join(', ')}`);
 
         // Open Body Style accordion
-        await page.click('#BodyStyle-accordion-trigger');
-        await page.waitForTimeout(1000);
+        await page.click('#BodyStyle-accordion-trigger', { timeout: 360000 });
+        await page.waitForTimeout(600);
 
         // Click checkboxes for each body type
         for (const bodyType of bodyTypes) {
             if (bodyType.includes('Pickup')) {
                 // Find and click Pickup Truck checkbox
-                await page.click('button[id*="PICKUP"], label:has-text("Pickup Truck")');
-                await page.waitForTimeout(500);
+                await page.click('button[id*="PICKUP"], label:has-text("Pickup Truck")', { timeout: 360000 });
+                await page.waitForTimeout(400);
                 console.log('  ✅ Added Pickup Truck');
             }
             // SUV/Crossover is already selected by default on the base URL
         }
 
-        await page.waitForTimeout(2000); // Wait for results to update
+        await page.waitForTimeout(1500); // Wait for results to update
     } catch (error) {
         console.log(`  ⚠️ Body type filter error: ${error.message} (continuing...)`);
     }
@@ -93,8 +93,8 @@ async function applyMakeFilter(page, makes) {
         console.log(`🏭 Setting makes: ${makes.join(', ')}`);
 
         // Open Make & Model accordion
-        await page.click('#MakeAndModel-accordion-trigger');
-        await page.waitForTimeout(1000);
+        await page.click('#MakeAndModel-accordion-trigger', { timeout: 360000 });
+        await page.waitForTimeout(600);
 
         // Click checkbox for each make
         for (const make of makes) {
@@ -102,16 +102,16 @@ async function applyMakeFilter(page, makes) {
                 // Handle special case: RAM needs to be uppercase to match button ID
                 const makeId = make.toUpperCase() === 'RAM' ? 'RAM' : make;
 
-                // Click the make button (escape dots in ID selector)
-                await page.click(`#FILTER\\.MAKE_MODEL\\.${makeId}`);
+                // Click the make button (escape dots in ID selector) with 6-minute timeout
+                await page.click(`#FILTER\\.MAKE_MODEL\\.${makeId}`, { timeout: 360000 });
                 console.log(`  ✅ Added ${make}`);
-                await page.waitForTimeout(300);
+                await page.waitForTimeout(400);
             } catch (error) {
                 console.log(`  ⚠️ Could not click ${make}: ${error.message}`);
             }
         }
 
-        await page.waitForTimeout(2000); // Wait for results to update
+        await page.waitForTimeout(1500); // Wait for results to update
     } catch (error) {
         console.log(`  ⚠️ Make filter error: ${error.message} (continuing...)`);
     }
@@ -122,21 +122,21 @@ async function applyDealRatingFilter(page, dealRatings) {
         console.log(`⭐ Setting deal ratings: ${dealRatings.join(', ')}`);
 
         // Open Deal Rating accordion
-        await page.click('#DealRating-accordion-trigger');
-        await page.waitForTimeout(1000);
+        await page.click('#DealRating-accordion-trigger', { timeout: 360000 });
+        await page.waitForTimeout(600);
 
         // Click checkboxes for each deal rating
         for (const rating of dealRatings) {
             try {
-                await page.click(`#FILTER\\.DEAL_RATING\\.${rating}`);
+                await page.click(`#FILTER\\.DEAL_RATING\\.${rating}`, { timeout: 360000 });
                 console.log(`  ✅ Added ${rating.replace('_', ' ')}`);
-                await page.waitForTimeout(300);
+                await page.waitForTimeout(400);
             } catch (error) {
                 console.log(`  ⚠️ Could not click ${rating}: ${error.message}`);
             }
         }
 
-        await page.waitForTimeout(2000); // Wait for results to update
+        await page.waitForTimeout(1500); // Wait for results to update
     } catch (error) {
         console.log(`  ⚠️ Deal rating filter error: ${error.message} (continuing...)`);
     }
@@ -166,16 +166,16 @@ await Actor.main(async () => {
 
     console.log('🚀 Starting CarGurus Stealth Scraper with UI Filters...');
 
-    // Get or initialize page state - now we scrape 2 pages per run
+    // Get or initialize page state - now we scrape 3 pages per run
     let startPage = currentPage;
     if (!startPage) {
         const state = await Actor.getValue('SCRAPER_STATE') || {};
         startPage = state.nextPage || 1;
     }
 
-    // Calculate the 2-page batch
+    // Calculate the 3-page batch
     const pagesToScrape = [];
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
         const pageNum = startPage + i;
         if (pageNum <= maxPages) {
             pagesToScrape.push(pageNum);
@@ -225,20 +225,20 @@ await Actor.main(async () => {
         });
 
         console.log('⏳ Waiting for page to load...');
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(3000);
 
         // Simulate human behavior
         console.log('🖱️ Simulating human behavior...');
         await page.mouse.move(100, 200);
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
         await page.mouse.move(300, 400);
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(500);
 
         // STEP 2: Apply all filters via UI (once for all pages)
         await applyFilters(page, filters, location, searchRadius);
 
         // STEP 3: Get the filtered URL with searchId
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(2000);
         const filteredUrl = page.url();
         const baseUrlWithFilters = filteredUrl.split('#')[0];
 
@@ -247,7 +247,7 @@ await Actor.main(async () => {
         // Track current page (we start at page 1 after applying filters)
         let currentPageNumber = 1;
 
-        // STEP 4-7: Loop through each page in the batch (2 pages)
+        // STEP 4-7: Loop through each page in the batch (3 pages)
         for (const pageToScrape of pagesToScrape) {
             console.log(`\n${'='.repeat(60)}`);
             console.log(`📄 Processing page ${pageToScrape} of ${maxPages}`);
@@ -262,17 +262,17 @@ await Actor.main(async () => {
                     try {
                         // Scroll to bottom to make pagination visible
                         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-                        await page.waitForTimeout(1000);
+                        await page.waitForTimeout(800);
 
                         // Wait for and click the Next button
                         const nextButton = page.locator('button[data-testid="srp-desktop-page-navigation-next-page"]');
-                        await nextButton.waitFor({ state: 'visible', timeout: 5000 });
+                        await nextButton.waitFor({ state: 'visible', timeout: 10000 });
                         await nextButton.click();
 
                         console.log(`  ✅ Clicked Next button (${i + 1}/${clicksNeeded})`);
 
                         // Wait for new page to load
-                        await page.waitForTimeout(5000);
+                        await page.waitForTimeout(3000);
                     } catch (error) {
                         console.log(`  ⚠️ Next button click failed: ${error.message}`);
                         // Fallback to hash navigation if Next button fails
@@ -280,14 +280,14 @@ await Actor.main(async () => {
                         await page.evaluate((pageNum) => {
                             window.location.hash = `resultsPage=${pageNum}`;
                         }, pageToScrape);
-                        await page.waitForTimeout(5000);
+                        await page.waitForTimeout(4000);
                         break; // Exit the clicking loop since we used hash navigation
                     }
                 }
 
                 // Scroll to top after navigation
                 await page.evaluate(() => window.scrollTo(0, 0));
-                await page.waitForTimeout(2000);
+                await page.waitForTimeout(1000);
 
                 // Update current page tracker
                 currentPageNumber = pageToScrape;
@@ -302,10 +302,10 @@ await Actor.main(async () => {
                         behavior: 'smooth'
                     });
                 }, (i + 1) * 1000);
-                await page.waitForTimeout(2000);
+                await page.waitForTimeout(1200);
             }
 
-            await page.waitForTimeout(3000);
+            await page.waitForTimeout(2000);
 
             // Extract car links
             const carLinks = await page.evaluate(() => {
@@ -376,7 +376,7 @@ await Actor.main(async () => {
 
                 console.log('⏳ Waiting for detailListingJson.action...');
                 await detailListingPromise;
-                await carPage.waitForTimeout(2000);
+                await carPage.waitForTimeout(1000);
 
                 // Parse data from API response
                 let carData = {};
@@ -521,8 +521,8 @@ await Actor.main(async () => {
 
                 await carPage.close();
 
-                // Random delay between cars
-                await page.waitForTimeout(2000 + Math.random() * 3000);
+                // Random delay between cars (human-like behavior)
+                await page.waitForTimeout(1500 + Math.random() * 2000);
 
             } catch (error) {
                 console.error(`❌ Error processing car ${carUrl}:`, error.message);
