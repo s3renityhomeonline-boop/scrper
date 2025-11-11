@@ -18,7 +18,12 @@ async function applyFilters(page, filters, location, searchRadius) {
     // 2. BODY TYPE FILTER (Add Pickup Truck)
     await applyBodyTypeFilter(page, filters.bodyTypes);
 
-    // 3. DEAL RATING FILTER (Great/Good/Fair)
+    // 3. MAKE & MODEL FILTER (Ford, GMC, Chevrolet, etc.)
+    if (filters.makes && filters.makes.length > 0) {
+        await applyMakeFilter(page, filters.makes);
+    }
+
+    // 4. DEAL RATING FILTER (Great/Good/Fair) - LAST
     await applyDealRatingFilter(page, filters.dealRatings);
 
     console.log('✅ All filters applied successfully!');
@@ -80,6 +85,35 @@ async function applyBodyTypeFilter(page, bodyTypes) {
         await page.waitForTimeout(2000); // Wait for results to update
     } catch (error) {
         console.log(`  ⚠️ Body type filter error: ${error.message} (continuing...)`);
+    }
+}
+
+async function applyMakeFilter(page, makes) {
+    try {
+        console.log(`🏭 Setting makes: ${makes.join(', ')}`);
+
+        // Open Make & Model accordion
+        await page.click('#MakeAndModel-accordion-trigger');
+        await page.waitForTimeout(1000);
+
+        // Click checkbox for each make
+        for (const make of makes) {
+            try {
+                // Handle special case: RAM needs to be uppercase to match button ID
+                const makeId = make.toUpperCase() === 'RAM' ? 'RAM' : make;
+
+                // Click the make button (escape dots in ID selector)
+                await page.click(`#FILTER\\.MAKE_MODEL\\.${makeId}`);
+                console.log(`  ✅ Added ${make}`);
+                await page.waitForTimeout(300);
+            } catch (error) {
+                console.log(`  ⚠️ Could not click ${make}: ${error.message}`);
+            }
+        }
+
+        await page.waitForTimeout(2000); // Wait for results to update
+    } catch (error) {
+        console.log(`  ⚠️ Make filter error: ${error.message} (continuing...)`);
     }
 }
 
@@ -210,27 +244,53 @@ await Actor.main(async () => {
 
         console.log(`✅ Filters applied! Generated URL with searchId`);
 
+        // Track current page (we start at page 1 after applying filters)
+        let currentPageNumber = 1;
+
         // STEP 4-7: Loop through each page in the batch (2 pages)
         for (const pageToScrape of pagesToScrape) {
             console.log(`\n${'='.repeat(60)}`);
             console.log(`📄 Processing page ${pageToScrape} of ${maxPages}`);
             console.log(`${'='.repeat(60)}\n`);
 
-            // Navigate to specific page if needed
-            if (pageToScrape > 1) {
-                console.log(`🔄 Navigating to page ${pageToScrape}...`);
+            // Navigate to specific page if needed by clicking Next button (human-like)
+            if (pageToScrape !== currentPageNumber) {
+                const clicksNeeded = pageToScrape - currentPageNumber;
+                console.log(`🔄 Navigating from page ${currentPageNumber} to page ${pageToScrape} (${clicksNeeded} clicks)...`);
 
-                // Use JavaScript to change hash instead of page.goto() (avoids page crash)
-                await page.evaluate((pageNum) => {
-                    window.location.hash = `resultsPage=${pageNum}`;
-                }, pageToScrape);
+                for (let i = 0; i < clicksNeeded; i++) {
+                    try {
+                        // Scroll to bottom to make pagination visible
+                        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                        await page.waitForTimeout(1000);
 
-                // Wait for new page to load
-                await page.waitForTimeout(5000);
+                        // Wait for and click the Next button
+                        const nextButton = page.locator('button[data-testid="srp-desktop-page-navigation-next-page"]');
+                        await nextButton.waitFor({ state: 'visible', timeout: 5000 });
+                        await nextButton.click();
 
-                // Scroll to top to trigger any lazy loading
+                        console.log(`  ✅ Clicked Next button (${i + 1}/${clicksNeeded})`);
+
+                        // Wait for new page to load
+                        await page.waitForTimeout(5000);
+                    } catch (error) {
+                        console.log(`  ⚠️ Next button click failed: ${error.message}`);
+                        // Fallback to hash navigation if Next button fails
+                        console.log(`  🔄 Falling back to hash navigation...`);
+                        await page.evaluate((pageNum) => {
+                            window.location.hash = `resultsPage=${pageNum}`;
+                        }, pageToScrape);
+                        await page.waitForTimeout(5000);
+                        break; // Exit the clicking loop since we used hash navigation
+                    }
+                }
+
+                // Scroll to top after navigation
                 await page.evaluate(() => window.scrollTo(0, 0));
                 await page.waitForTimeout(2000);
+
+                // Update current page tracker
+                currentPageNumber = pageToScrape;
             }
 
             // Scroll to load car links
