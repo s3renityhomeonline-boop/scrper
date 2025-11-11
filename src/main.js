@@ -143,6 +143,51 @@ async function applyDealRatingFilter(page, dealRatings) {
 }
 
 // ============================================
+// BLOCKING DETECTION
+// ============================================
+
+async function detectBlocking(page, carLinks, pageTitle) {
+    const blockingIndicators = {
+        isBlocked: false,
+        reason: null
+    };
+
+    // Check 1: 0 car links found (most common indicator)
+    if (carLinks.length === 0) {
+        blockingIndicators.isBlocked = true;
+        blockingIndicators.reason = '0 car links found';
+    }
+
+    // Check 2: Generic page title (not location-specific)
+    if (pageTitle === 'Used Cars' || pageTitle.includes('Access Denied') || pageTitle.includes('Blocked')) {
+        blockingIndicators.isBlocked = true;
+        blockingIndicators.reason = `Suspicious page title: "${pageTitle}"`;
+    }
+
+    // Check 3: Look for captcha or block elements
+    try {
+        const hasBlockElements = await page.evaluate(() => {
+            const body = document.body.textContent || '';
+            return body.includes('captcha') ||
+                   body.includes('Access Denied') ||
+                   body.includes('blocked') ||
+                   body.includes('unusual traffic');
+        });
+
+        if (hasBlockElements) {
+            blockingIndicators.isBlocked = true;
+            blockingIndicators.reason = 'Block/captcha elements detected';
+        }
+    } catch (error) {
+        // Page might be crashed, consider it blocked
+        blockingIndicators.isBlocked = true;
+        blockingIndicators.reason = 'Page evaluation failed';
+    }
+
+    return blockingIndicators;
+}
+
+// ============================================
 // MAIN SCRAPER
 // ============================================
 
@@ -155,6 +200,7 @@ await Actor.main(async () => {
         currentPage = null,
         maxPages = 73,
         maxResults = 24,
+        maxRetries = 3,
         filters = {
             makes: ['Ford', 'GMC', 'Chevrolet', 'Toyota', 'Cadillac', 'Ram', 'Jeep'],
             bodyTypes: ['SUV / Crossover', 'Pickup Truck'],
@@ -191,69 +237,83 @@ await Actor.main(async () => {
     console.log(`📄 Scraping ${pagesToScrape.length} pages this run: ${pagesToScrape.join(', ')} of ${maxPages} total`);
     console.log(`📍 Location: ${location} (${searchRadius} km radius)`);
     console.log(`📊 Max results per page: ${maxResults}`);
+    console.log(`🔄 Max retry attempts: ${maxRetries}`);
 
-    // Launch browser with stealth
-    const browser = await chromium.launch({
-        headless: true,
-        args: [
-            '--disable-blink-features=AutomationControlled',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--disable-web-security',
-            '--disable-features=VizDisplayCompositor',
-        ],
-    });
+    // Retry loop for proxy rotation
+    let attemptNumber = 0;
+    let scrapingSuccessful = false;
+    let lastError = null;
 
-    const context = await browser.newContext({
-        viewport: { width: 1920, height: 1080 },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        locale: 'en-CA',
-        timezoneId: 'America/Toronto',
-        geolocation: { longitude: -79.3832, latitude: 43.6532 },
-        permissions: ['geolocation'],
-    });
+    while (attemptNumber < maxRetries && !scrapingSuccessful) {
+        attemptNumber++;
+        console.log(`\n${'='.repeat(70)}`);
+        console.log(`🔄 ATTEMPT ${attemptNumber}/${maxRetries}`);
+        console.log(`${'='.repeat(70)}\n`);
 
-    const page = await context.newPage();
+        let browser = null;
 
-    try {
-        // STEP 1: Navigate to base SUV page
-        const baseUrl = 'https://www.cargurus.ca/Cars/l-Used-SUV-Crossover-bg7';
-        console.log(`\n🌐 Visiting base page: ${baseUrl}`);
+        try {
+            // Launch browser with stealth
+            browser = await chromium.launch({
+                headless: true,
+                args: [
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                ],
+            });
 
-        await page.goto(baseUrl, {
-            waitUntil: 'domcontentloaded',
-            timeout: 90000
-        });
+            const context = await browser.newContext({
+                viewport: { width: 1920, height: 1080 },
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                locale: 'en-CA',
+                timezoneId: 'America/Toronto',
+                geolocation: { longitude: -79.3832, latitude: 43.6532 },
+                permissions: ['geolocation'],
+            });
 
-        console.log('⏳ Waiting for page to load...');
-        await page.waitForTimeout(3000);
+            const page = await context.newPage();
 
-        // Simulate human behavior
-        console.log('🖱️ Simulating human behavior...');
-        await page.mouse.move(100, 200);
-        await page.waitForTimeout(300);
-        await page.mouse.move(300, 400);
-        await page.waitForTimeout(500);
+            // STEP 1: Navigate to base SUV page
+            const baseUrl = 'https://www.cargurus.ca/Cars/l-Used-SUV-Crossover-bg7';
+            console.log(`\n🌐 Visiting base page: ${baseUrl}`);
 
-        // STEP 2: Apply all filters via UI (once for all pages)
-        await applyFilters(page, filters, location, searchRadius);
+            await page.goto(baseUrl, {
+                waitUntil: 'domcontentloaded',
+                timeout: 90000
+            });
 
-        // STEP 3: Wait for filtered results to load (longer wait for AJAX)
-        console.log('⏳ Waiting for filtered results to load...');
-        await page.waitForTimeout(6000);
+            console.log('⏳ Waiting for page to load...');
+            await page.waitForTimeout(3000);
 
-        const filteredUrl = page.url();
-        const baseUrlWithFilters = filteredUrl.split('#')[0];
+            // Simulate human behavior
+            console.log('🖱️ Simulating human behavior...');
+            await page.mouse.move(100, 200);
+            await page.waitForTimeout(300);
+            await page.mouse.move(300, 400);
+            await page.waitForTimeout(500);
 
-        console.log(`✅ Filters applied! Generated URL with searchId`);
+            // STEP 2: Apply all filters via UI (once for all pages)
+            await applyFilters(page, filters, location, searchRadius);
 
-        // Track current page (we start at page 1 after applying filters)
-        let currentPageNumber = 1;
+            // STEP 3: Wait for filtered results to load (longer wait for AJAX)
+            console.log('⏳ Waiting for filtered results to load...');
+            await page.waitForTimeout(6000);
 
-        // STEP 4-7: Loop through each page in the batch (3 pages)
-        for (const pageToScrape of pagesToScrape) {
-            console.log(`\n${'='.repeat(60)}`);
-            console.log(`📄 Processing page ${pageToScrape} of ${maxPages}`);
-            console.log(`${'='.repeat(60)}\n`);
+            const filteredUrl = page.url();
+            const baseUrlWithFilters = filteredUrl.split('#')[0];
+
+            console.log(`✅ Filters applied! Generated URL with searchId`);
+
+            // Track current page (we start at page 1 after applying filters)
+            let currentPageNumber = 1;
+
+            // STEP 4-7: Loop through each page in the batch (3 pages)
+            for (const pageToScrape of pagesToScrape) {
+                console.log(`\n${'='.repeat(60)}`);
+                console.log(`📄 Processing page ${pageToScrape} of ${maxPages}`);
+                console.log(`${'='.repeat(60)}\n`);
 
             // Navigate to specific page if needed by clicking Next button (human-like)
             if (pageToScrape !== currentPageNumber) {
@@ -348,11 +408,28 @@ await Actor.main(async () => {
 
             console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
 
-            // Debug if no links found
+            // Check for blocking/proxy issues
+            const pageTitle = await page.title();
+            const blockingStatus = await detectBlocking(page, carLinks, pageTitle);
+
+            if (blockingStatus.isBlocked) {
+                console.log(`\n🚫 BLOCKING DETECTED: ${blockingStatus.reason}`);
+                console.log(`📍 Current URL: ${page.url()}`);
+                console.log(`📄 Page title: ${pageTitle}`);
+
+                // Take screenshot for debugging
+                const screenshotName = `blocked-attempt${attemptNumber}-page${pageToScrape}.png`;
+                await Actor.setValue(screenshotName, await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
+                console.log(`📸 Screenshot saved: ${screenshotName}`);
+
+                // Throw error to trigger retry with new proxy
+                throw new Error(`Blocking detected: ${blockingStatus.reason}`);
+            }
+
+            // Debug if no links found (should be caught by blocking detection, but keep as fallback)
             if (carLinks.length === 0) {
                 console.log('⚠️ No car links found - debugging...');
                 const currentUrl = page.url();
-                const pageTitle = await page.title();
                 console.log(`📍 Current URL: ${currentUrl}`);
                 console.log(`📄 Page title: ${pageTitle}`);
 
@@ -564,6 +641,9 @@ await Actor.main(async () => {
 
         } // End of page loop
 
+        // If we got here, scraping was successful!
+        scrapingSuccessful = true;
+
         // Save state for next run - save the next batch starting page
         const lastPageScraped = pagesToScrape[pagesToScrape.length - 1];
         const nextPage = lastPageScraped + 1;
@@ -577,11 +657,33 @@ await Actor.main(async () => {
         });
 
         console.log(`\n💾 State saved: Next run will start at page ${nextPage}`);
+        console.log(`✅ Attempt ${attemptNumber} successful!`);
 
-    } catch (error) {
-        console.error(`❌ Error processing pages ${pagesToScrape.join(', ')}:`, error.message);
+        } catch (error) {
+            lastError = error;
+            console.error(`\n❌ Attempt ${attemptNumber} failed: ${error.message}`);
+
+            // If this is not the last attempt, wait before retry
+            if (attemptNumber < maxRetries) {
+                const waitTime = 10000 + (attemptNumber * 10000); // 10s, 20s, 30s...
+                console.log(`⏳ Waiting ${waitTime / 1000} seconds before retry...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
+        } finally {
+            // Always close browser after each attempt
+            if (browser) {
+                await browser.close();
+                console.log('🔒 Browser closed');
+            }
+        }
+    } // End of retry loop
+
+    // Check if all retries failed
+    if (!scrapingSuccessful) {
+        console.error(`\n❌ All ${maxRetries} attempts failed!`);
+        console.error(`Last error: ${lastError?.message}`);
+        throw new Error(`Scraping failed after ${maxRetries} attempts: ${lastError?.message}`);
     }
 
-    await browser.close();
     console.log('\n✅ Scraping complete!');
 });
