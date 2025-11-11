@@ -12,13 +12,50 @@ chromium.use(StealthPlugin());
 async function applyFilters(page, filters, location, searchRadius) {
     console.log('🎯 Applying UI filters...');
 
-    // BODY TYPE FILTER (Add Pickup Truck)
+    // 1. LOCATION/REGION UPDATE (FIRST - before other filters)
+    await updateLocation(page, location);
+
+    // 2. BODY TYPE FILTER (Add Pickup Truck)
     await applyBodyTypeFilter(page, filters.bodyTypes);
 
-    // DEAL RATING FILTER (Great/Good/Fair)
+    // 3. DEAL RATING FILTER (Great/Good/Fair)
     await applyDealRatingFilter(page, filters.dealRatings);
 
     console.log('✅ All filters applied successfully!');
+}
+
+async function updateLocation(page, postalCode) {
+    try {
+        console.log(`📍 Updating location to: ${postalCode}`);
+
+        // Click the location button to open modal
+        await page.click('button[data-testid="zipCodeLink"]');
+        await page.waitForTimeout(1500);
+        console.log('  ✅ Location modal opened');
+
+        // Wait for modal and postal code input to be visible
+        await page.waitForSelector('#ZipInput', { state: 'visible', timeout: 5000 });
+
+        // Clear existing value and fill with new postal code
+        const zipInput = await page.locator('#ZipInput');
+        await zipInput.click();
+        await zipInput.fill(''); // Clear first
+        await page.waitForTimeout(300);
+        await zipInput.fill(postalCode);
+        await page.waitForTimeout(500);
+        console.log(`  ✅ Entered postal code: ${postalCode}`);
+
+        // Click the Update button
+        await page.click('button[type="submit"]:has-text("Update")');
+        console.log('  ✅ Clicked Update button');
+
+        // Wait for page to reload and new results to load
+        await page.waitForTimeout(5000);
+        console.log('  ✅ Location updated successfully');
+
+    } catch (error) {
+        console.log(`  ⚠️ Location update error: ${error.message} (continuing...)`);
+    }
 }
 
 async function applyBodyTypeFilter(page, bodyTypes) {
