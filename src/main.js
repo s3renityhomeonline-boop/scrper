@@ -237,8 +237,10 @@ await Actor.main(async () => {
         // STEP 2: Apply all filters via UI (once for all pages)
         await applyFilters(page, filters, location, searchRadius);
 
-        // STEP 3: Get the filtered URL with searchId
-        await page.waitForTimeout(2000);
+        // STEP 3: Wait for filtered results to load (longer wait for AJAX)
+        console.log('⏳ Waiting for filtered results to load...');
+        await page.waitForTimeout(6000);
+
         const filteredUrl = page.url();
         const baseUrlWithFilters = filteredUrl.split('#')[0];
 
@@ -264,15 +266,15 @@ await Actor.main(async () => {
                         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
                         await page.waitForTimeout(800);
 
-                        // Wait for and click the Next button
+                        // Wait for and click the Next button (2-minute timeout)
                         const nextButton = page.locator('button[data-testid="srp-desktop-page-navigation-next-page"]');
-                        await nextButton.waitFor({ state: 'visible', timeout: 10000 });
-                        await nextButton.click();
+                        await nextButton.waitFor({ state: 'visible', timeout: 120000 });
+                        await nextButton.click({ timeout: 120000 });
 
                         console.log(`  ✅ Clicked Next button (${i + 1}/${clicksNeeded})`);
 
                         // Wait for new page to load
-                        await page.waitForTimeout(3000);
+                        await page.waitForTimeout(4000);
                     } catch (error) {
                         console.log(`  ⚠️ Next button click failed: ${error.message}`);
                         // Fallback to hash navigation if Next button fails
@@ -280,7 +282,7 @@ await Actor.main(async () => {
                         await page.evaluate((pageNum) => {
                             window.location.hash = `resultsPage=${pageNum}`;
                         }, pageToScrape);
-                        await page.waitForTimeout(4000);
+                        await page.waitForTimeout(5000);
                         break; // Exit the clicking loop since we used hash navigation
                     }
                 }
@@ -307,11 +309,42 @@ await Actor.main(async () => {
 
             await page.waitForTimeout(2000);
 
+            // Wait for car links to appear in DOM (explicit wait)
+            console.log('⏳ Waiting for car listings to appear...');
+            try {
+                await page.waitForSelector('a[href*="vdp.action"]', {
+                    state: 'visible',
+                    timeout: 20000
+                });
+                console.log('✅ Car listings loaded!');
+            } catch (error) {
+                console.log('⚠️ Timeout waiting for car listings, will try to extract anyway...');
+                // Continue anyway - maybe they loaded but selector is slightly off
+            }
+
             // Extract car links
-            const carLinks = await page.evaluate(() => {
+            let carLinks = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
                 return [...new Set(links.map(a => a.href))];
             });
+
+            // Retry logic if 0 cars found
+            if (carLinks.length === 0) {
+                console.log('⚠️ 0 cars found on first attempt, waiting and retrying...');
+                await page.waitForTimeout(5000);
+
+                // Scroll again to trigger lazy loading
+                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                await page.waitForTimeout(2000);
+                await page.evaluate(() => window.scrollTo(0, 0));
+                await page.waitForTimeout(2000);
+
+                // Try extracting again
+                carLinks = await page.evaluate(() => {
+                    const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
+                    return [...new Set(links.map(a => a.href))];
+                });
+            }
 
             console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
 
