@@ -3,20 +3,13 @@
   "type": "object",
   "schemaVersion": 1,
   "properties": {
-    "location": {
-      "title": "Location (Postal Code)",
-      "type": "string",
-      "description": "Canadian postal code for search location (e.g., H3H for Montreal, M5H for Toronto)",
-      "default": "H3H",
-      "editor": "textfield"
-    },
     "searchRadius": {
       "title": "Search Radius (KM)",
       "type": "integer",
-      "description": "Search radius in kilometers (recommended: 25, 50, 75, 100, 150, or 200)",
-      "default": 100,
+      "description": "Search radius in kilometers. Options: 25, 50, 75, 100, 250, 500, or 50000 (Nationwide)",
+      "default": 50000,
       "minimum": 25,
-      "maximum": 200
+      "maximum": 50000
     },
     "currentPage": {
       "title": "Current Page (optional)",
@@ -46,7 +39,7 @@
       "description": "Filters to apply via UI automation",
       "editor": "json",
       "default": {
-        "makes": ["Ford", "GMC", "Chevrolet", "Toyota", "Cadillac", "Ram", "Jeep"],
+        "makes": ["Ford", "GMC", "Chevrolet", "Cadillac"],
         "bodyTypes": ["SUV / Crossover", "Pickup Truck"],
         "maxMileage": 140000,
         "minPrice": 35000,
@@ -65,5 +58,5 @@
       }
     }
   },
-  "required": ["location"]
+  "required": []
 }
