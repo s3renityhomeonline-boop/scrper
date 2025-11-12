@@ -295,8 +295,8 @@ await Actor.main(async () => {
 
                         for (let i = 0; i < clicksNeeded; i++) {
                             try {
-                                // Scroll to bottom to make pagination visible (with timeout)
-                                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight), { timeout: 60000 });
+                                // Scroll to bottom to make pagination visible
+                                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
                                 await page.waitForTimeout(800);
 
                                 // Wait for and click the Next button (2-minute timeout)
@@ -314,21 +314,21 @@ await Actor.main(async () => {
                                 console.log(`  🔄 Falling back to hash navigation...`);
                                 await page.evaluate((pageNum) => {
                                     window.location.hash = `resultsPage=${pageNum}`;
-                                }, pageToScrape, { timeout: 60000 });
+                                }, pageToScrape);
                                 await page.waitForTimeout(5000);
                                 break; // Exit the clicking loop since we used hash navigation
                             }
                         }
 
-                        // Scroll to top after navigation (with timeout)
-                        await page.evaluate(() => window.scrollTo(0, 0), { timeout: 60000 });
+                        // Scroll to top after navigation
+                        await page.evaluate(() => window.scrollTo(0, 0));
                         await page.waitForTimeout(1000);
 
                         // Update current page tracker
                         currentPageNumber = pageToScrape;
                     }
 
-                    // Scroll to load car links (with timeouts)
+                    // Scroll to load car links
                     console.log('📜 Scrolling to load content...');
                     for (let i = 0; i < 3; i++) {
                         await page.evaluate((offset) => {
@@ -336,17 +336,17 @@ await Actor.main(async () => {
                                 top: offset,
                                 behavior: 'smooth'
                             });
-                        }, (i + 1) * 1000, { timeout: 60000 });
+                        }, (i + 1) * 1000);
                         await page.waitForTimeout(2000);
                     }
 
                     await page.waitForTimeout(3000);
 
-                    // Extract car links (with timeout)
+                    // Extract car links
                     const carLinks = await page.evaluate(() => {
                         const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
                         return [...new Set(links.map(a => a.href))];
-                    }, { timeout: 60000 });
+                    });
 
                     console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
 
@@ -388,7 +388,7 @@ await Actor.main(async () => {
             const carLinks = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
                 return [...new Set(links.map(a => a.href))];
-            }, { timeout: 60000 });
+            });
 
             // Visit car detail pages and scrape
             const linksToVisit = carLinks.slice(0, maxResults);
