@@ -31,14 +31,13 @@ async function applyFilters(page, filters, searchRadius) {
 
 async function setSearchRadius(page, searchRadius) {
     try {
-        console.log(`🌍 Setting search radius to: ${searchRadius === 'nationwide' ? 'Nationwide' : searchRadius + ' km'}`);
+        console.log(`🌍 Setting search radius to: ${searchRadius === 50000 ? 'Nationwide' : searchRadius + ' km'}`);
 
         // Select the search distance dropdown
         const dropdown = await page.locator('select[data-testid="select-filter-distance"]');
 
         // Select the value (50000 for Nationwide, or specific km value)
-        const value = searchRadius === 'nationwide' ? '50000' : searchRadius.toString();
-        await dropdown.selectOption(value);
+        await dropdown.selectOption(searchRadius.toString());
 
         console.log(`  ✅ Search radius set successfully`);
 
@@ -137,7 +136,7 @@ await Actor.main(async () => {
     const input = await Actor.getInput();
 
     const {
-        searchRadius = 'nationwide',
+        searchRadius = 50000,
         currentPage = null,
         maxPages = 73,
         maxResults = 24,
@@ -175,7 +174,7 @@ await Actor.main(async () => {
     }
 
     console.log(`📄 Scraping ${pagesToScrape.length} pages this run: ${pagesToScrape.join(', ')} of ${maxPages} total`);
-    console.log(`🌍 Search radius: ${searchRadius === 'nationwide' ? 'Nationwide' : searchRadius + ' km'}`);
+    console.log(`🌍 Search radius: ${searchRadius === 50000 ? 'Nationwide' : searchRadius + ' km'}`);
     console.log(`📊 Max results per page: ${maxResults}`);
 
     // Launch browser with stealth
