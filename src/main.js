@@ -9,47 +9,40 @@ chromium.use(StealthPlugin());
 // FILTER AUTOMATION HELPERS
 // ============================================
 
-async function applyFilters(page, filters, searchRadius) {
-    console.log('🎯 Applying UI filters...');
-
-    // 1. SEARCH RADIUS (Nationwide)
-    await setSearchRadius(page, searchRadius);
-
-    // 2. BODY TYPE FILTER (Add Pickup Truck)
-    await applyBodyTypeFilter(page, filters.bodyTypes);
-
-    // 3. MAKE & MODEL FILTER (Ford, GMC, Chevrolet, Cadillac)
-    if (filters.makes && filters.makes.length > 0) {
-        await applyMakeFilter(page, filters.makes);
-    }
-
-    // 4. PRICE FILTER (Minimum $35,000)
-    await applyPriceFilter(page);
-
-    // 5. DEAL RATING FILTER (Great/Good/Fair) - LAST
-    await applyDealRatingFilter(page, filters.dealRatings);
-
-    console.log('✅ All filters applied successfully!');
-}
+// Note: Filter functions are now called individually in the proxy retry loop below
+// This provides better control over error handling and proxy rotation
 
 async function setSearchRadius(page, searchRadius) {
     try {
         console.log(`🌍 Setting search radius to: ${searchRadius === 50000 ? 'Nationwide' : searchRadius + ' km'}`);
+        console.log(`  🔍 Looking for dropdown (25s timeout for blocking detection)...`);
 
-        // Select the search distance dropdown (6-minute timeout)
+        // Select the search distance dropdown (25-second timeout to detect blocking)
         const dropdown = await page.locator('select[data-testid="select-filter-distance"]');
-        await dropdown.waitFor({ state: 'visible', timeout: 360000 });
+        await dropdown.waitFor({ state: 'visible', timeout: 25000 });
+
+        console.log(`  ✅ Dropdown found, setting value...`);
 
         // Select the value (50000 for Nationwide, or specific km value)
-        await dropdown.selectOption(searchRadius.toString(), { timeout: 360000 });
+        await dropdown.selectOption(searchRadius.toString(), { timeout: 10000 });
 
         console.log(`  ✅ Search radius set successfully`);
 
         // Wait for results to update
         await page.waitForTimeout(2000);
+        return true; // Success
 
     } catch (error) {
-        console.log(`  ⚠️ Search radius error: ${error.message} (continuing...)`);
+        console.log(`  ❌ Search radius FAILED after 25s: ${error.message}`);
+        console.log(`  📍 Current URL: ${page.url()}`);
+
+        // Take screenshot for debugging
+        try {
+            await Actor.setValue('debug-blocked.png', await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
+            console.log(`  📸 Screenshot saved`);
+        } catch (e) {}
+
+        return false; // Failed - likely blocked
     }
 }
 
@@ -217,50 +210,133 @@ await Actor.main(async () => {
     console.log(`🌍 Search radius: ${searchRadius === 50000 ? 'Nationwide' : searchRadius + ' km'}`);
     console.log(`📊 Max results per page: ${maxResults}`);
 
-    // Launch browser with stealth
-    const browser = await chromium.launch({
-        headless: true,
-        args: [
-            '--disable-blink-features=AutomationControlled',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--disable-web-security',
-            '--disable-features=VizDisplayCompositor',
-        ],
-    });
+    // Proxy retry logic (max 2 attempts with different proxies)
+    let browser, context, page;
+    let filtersApplied = false;
+    const maxProxyAttempts = 2;
 
-    const context = await browser.newContext({
-        viewport: { width: 1920, height: 1080 },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        locale: 'en-CA',
-        timezoneId: 'America/Toronto',
-        geolocation: { longitude: -79.3832, latitude: 43.6532 },
-        permissions: ['geolocation'],
-    });
+    for (let proxyAttempt = 1; proxyAttempt <= maxProxyAttempts; proxyAttempt++) {
+        try {
+            if (proxyAttempt > 1) {
+                console.log(`\n🔄 Proxy Attempt ${proxyAttempt}/${maxProxyAttempts}: Trying with fresh proxy...`);
+            } else {
+                console.log(`\n🌐 Proxy Attempt ${proxyAttempt}/${maxProxyAttempts}: Launching browser...`);
+            }
 
-    const page = await context.newPage();
+            // Launch browser with stealth
+            browser = await chromium.launch({
+                headless: true,
+                args: [
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                ],
+            });
+
+            // Get Apify proxy configuration (rotates automatically)
+            const proxyConfiguration = await Actor.createProxyConfiguration({
+                groups: ['RESIDENTIAL'],
+                countryCode: 'CA',
+            });
+
+            const proxyUrl = await proxyConfiguration.newUrl();
+            console.log(`  🔐 Using Canadian residential proxy: ${proxyUrl.replace(/:[^:]*@/, ':***@')}`);
+
+            context = await browser.newContext({
+                viewport: { width: 1920, height: 1080 },
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                locale: 'en-CA',
+                timezoneId: 'America/Toronto',
+                geolocation: { longitude: -79.3832, latitude: 43.6532 },
+                permissions: ['geolocation'],
+                proxy: {
+                    server: proxyUrl,
+                },
+            });
+
+            page = await context.newPage();
+
+            // STEP 1: Navigate to base SUV page
+            const baseUrl = 'https://www.cargurus.ca/Cars/l-Used-SUV-Crossover-bg7';
+            console.log(`\n🌐 Visiting base page: ${baseUrl}`);
+
+            await page.goto(baseUrl, {
+                waitUntil: 'domcontentloaded',
+                timeout: 90000
+            });
+
+            console.log('⏳ Waiting for page to load...');
+            await page.waitForTimeout(8000);
+
+            // Simulate human behavior
+            console.log('🖱️ Simulating human behavior...');
+            await page.mouse.move(100, 200);
+            await page.waitForTimeout(500);
+            await page.mouse.move(300, 400);
+            await page.waitForTimeout(1000);
+
+            // Wait for search results to be visible before applying filters
+            console.log('⏳ Waiting for search results to load...');
+            try {
+                await page.waitForSelector('a[href*="vdp.action"]', { timeout: 30000 });
+                console.log('✅ Search results loaded');
+            } catch (e) {
+                console.log('⚠️ Search results not detected, continuing anyway...');
+            }
+            await page.waitForTimeout(2000);
+
+            // STEP 2: Apply all filters via UI (once for all pages)
+            const searchRadiusSuccess = await setSearchRadius(page, searchRadius);
+
+            if (!searchRadiusSuccess) {
+                console.log(`\n❌ Search radius filter FAILED (likely blocked)`);
+
+                if (proxyAttempt < maxProxyAttempts) {
+                    console.log(`🔄 Will retry with a different proxy...`);
+                    await browser.close();
+                    await page.waitForTimeout(3000); // Wait before retry
+                    continue; // Retry with new proxy
+                } else {
+                    console.log(`⚠️ All ${maxProxyAttempts} proxy attempts failed - continuing without search radius filter`);
+                }
+            } else {
+                console.log(`✅ Search radius filter applied successfully`);
+            }
+
+            // Apply remaining filters
+            await applyBodyTypeFilter(page, filters.bodyTypes);
+
+            if (filters.makes && filters.makes.length > 0) {
+                await applyMakeFilter(page, filters.makes);
+            }
+
+            await applyPriceFilter(page);
+            await applyDealRatingFilter(page, filters.dealRatings);
+
+            console.log('✅ All filters applied successfully!');
+            filtersApplied = true;
+            break; // Success - exit retry loop
+
+        } catch (proxyError) {
+            console.error(`❌ Error on proxy attempt ${proxyAttempt}: ${proxyError.message}`);
+
+            if (browser) await browser.close();
+
+            if (proxyAttempt < maxProxyAttempts) {
+                console.log(`🔄 Retrying with different proxy in 5 seconds...`);
+                await new Promise(resolve => setTimeout(resolve, 5000));
+            } else {
+                throw new Error(`All ${maxProxyAttempts} proxy attempts failed`);
+            }
+        }
+    }
+
+    if (!filtersApplied) {
+        throw new Error('Failed to apply filters after all proxy attempts');
+    }
 
     try {
-        // STEP 1: Navigate to base SUV page
-        const baseUrl = 'https://www.cargurus.ca/Cars/l-Used-SUV-Crossover-bg7';
-        console.log(`\n🌐 Visiting base page: ${baseUrl}`);
-
-        await page.goto(baseUrl, {
-            waitUntil: 'domcontentloaded',
-            timeout: 90000
-        });
-
-        console.log('⏳ Waiting for page to load...');
-        await page.waitForTimeout(5000);
-
-        // Simulate human behavior
-        console.log('🖱️ Simulating human behavior...');
-        await page.mouse.move(100, 200);
-        await page.waitForTimeout(500);
-        await page.mouse.move(300, 400);
-        await page.waitForTimeout(1000);
-
-        // STEP 2: Apply all filters via UI (once for all pages)
-        await applyFilters(page, filters, searchRadius);
 
         // STEP 3: Get the filtered URL with searchId
         await page.waitForTimeout(3000);
@@ -278,117 +354,79 @@ await Actor.main(async () => {
             console.log(`📄 Processing page ${pageToScrape} of ${maxPages}`);
             console.log(`${'='.repeat(60)}\n`);
 
-            // Retry logic for page processing (2 attempts)
-            let pageProcessed = false;
-            const maxPageAttempts = 2;
+            // Navigate to specific page if needed by clicking Next button (human-like)
+            if (pageToScrape !== currentPageNumber) {
+                const clicksNeeded = pageToScrape - currentPageNumber;
+                console.log(`🔄 Navigating from page ${currentPageNumber} to page ${pageToScrape} (${clicksNeeded} clicks)...`);
 
-            for (let pageAttempt = 1; pageAttempt <= maxPageAttempts; pageAttempt++) {
-                try {
-                    if (pageAttempt > 1) {
-                        console.log(`🔄 Retry attempt ${pageAttempt}/${maxPageAttempts} for page ${pageToScrape}...`);
-                    }
+                for (let i = 0; i < clicksNeeded; i++) {
+                    try {
+                        // Scroll to bottom to make pagination visible (with timeout)
+                        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight), { timeout: 60000 });
+                        await page.waitForTimeout(800);
 
-                    // Navigate to specific page if needed by clicking Next button (human-like)
-                    if (pageToScrape !== currentPageNumber) {
-                        const clicksNeeded = pageToScrape - currentPageNumber;
-                        console.log(`🔄 Navigating from page ${currentPageNumber} to page ${pageToScrape} (${clicksNeeded} clicks)...`);
+                        // Wait for and click the Next button (2-minute timeout)
+                        const nextButton = page.locator('button[data-testid="srp-desktop-page-navigation-next-page"]');
+                        await nextButton.waitFor({ state: 'visible', timeout: 120000 });
+                        await nextButton.click({ timeout: 120000 });
 
-                        for (let i = 0; i < clicksNeeded; i++) {
-                            try {
-                                // Scroll to bottom to make pagination visible (with timeout)
-                                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight), { timeout: 60000 });
-                                await page.waitForTimeout(800);
+                        console.log(`  ✅ Clicked Next button (${i + 1}/${clicksNeeded})`);
 
-                                // Wait for and click the Next button (2-minute timeout)
-                                const nextButton = page.locator('button[data-testid="srp-desktop-page-navigation-next-page"]');
-                                await nextButton.waitFor({ state: 'visible', timeout: 120000 });
-                                await nextButton.click({ timeout: 120000 });
-
-                                console.log(`  ✅ Clicked Next button (${i + 1}/${clicksNeeded})`);
-
-                                // Wait for new page to load
-                                await page.waitForTimeout(4000);
-                            } catch (error) {
-                                console.log(`  ⚠️ Next button click failed: ${error.message}`);
-                                // Fallback to hash navigation if Next button fails
-                                console.log(`  🔄 Falling back to hash navigation...`);
-                                await page.evaluate((pageNum) => {
-                                    window.location.hash = `resultsPage=${pageNum}`;
-                                }, pageToScrape, { timeout: 60000 });
-                                await page.waitForTimeout(5000);
-                                break; // Exit the clicking loop since we used hash navigation
-                            }
-                        }
-
-                        // Scroll to top after navigation (with timeout)
-                        await page.evaluate(() => window.scrollTo(0, 0), { timeout: 60000 });
-                        await page.waitForTimeout(1000);
-
-                        // Update current page tracker
-                        currentPageNumber = pageToScrape;
-                    }
-
-                    // Scroll to load car links (with timeouts)
-                    console.log('📜 Scrolling to load content...');
-                    for (let i = 0; i < 3; i++) {
-                        await page.evaluate((offset) => {
-                            window.scrollTo({
-                                top: offset,
-                                behavior: 'smooth'
-                            });
-                        }, (i + 1) * 1000, { timeout: 60000 });
-                        await page.waitForTimeout(2000);
-                    }
-
-                    await page.waitForTimeout(3000);
-
-                    // Extract car links (with timeout)
-                    const carLinks = await page.evaluate(() => {
-                        const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
-                        return [...new Set(links.map(a => a.href))];
-                    }, { timeout: 60000 });
-
-                    console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
-
-                    // Debug if no links found
-                    if (carLinks.length === 0) {
-                        console.log('⚠️ No car links found - debugging...');
-                        const currentUrl = page.url();
-                        const pageTitle = await page.title();
-                        console.log(`📍 Current URL: ${currentUrl}`);
-                        console.log(`📄 Page title: ${pageTitle}`);
-
-                        await Actor.setValue(`debug-screenshot-page${pageToScrape}.png`, await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
-
-                        // If no links found, throw error to trigger retry
-                        throw new Error('No car links found on page');
-                    }
-
-                    // Mark as successfully processed and break retry loop
-                    pageProcessed = true;
-                    break;
-
-                } catch (pageError) {
-                    console.error(`❌ Error on page ${pageToScrape} (attempt ${pageAttempt}/${maxPageAttempts}): ${pageError.message}`);
-
-                    if (pageAttempt < maxPageAttempts) {
-                        console.log('⏳ Waiting 5 seconds before retry...');
+                        // Wait for new page to load
+                        await page.waitForTimeout(4000);
+                    } catch (error) {
+                        console.log(`  ⚠️ Next button click failed: ${error.message}`);
+                        // Fallback to hash navigation if Next button fails
+                        console.log(`  🔄 Falling back to hash navigation...`);
+                        await page.evaluate((pageNum) => {
+                            window.location.hash = `resultsPage=${pageNum}`;
+                        }, pageToScrape, { timeout: 60000 });
                         await page.waitForTimeout(5000);
+                        break; // Exit the clicking loop since we used hash navigation
                     }
                 }
+
+                // Scroll to top after navigation (with timeout)
+                await page.evaluate(() => window.scrollTo(0, 0), { timeout: 60000 });
+                await page.waitForTimeout(1000);
+
+                // Update current page tracker
+                currentPageNumber = pageToScrape;
             }
 
-            // If page failed after all retries, skip it and continue
-            if (!pageProcessed) {
-                console.log(`⚠️ Skipping page ${pageToScrape} after ${maxPageAttempts} failed attempts`);
-                continue; // Skip to next page
+            // Scroll to load car links (with timeouts)
+            console.log('📜 Scrolling to load content...');
+            for (let i = 0; i < 3; i++) {
+                await page.evaluate((offset) => {
+                    window.scrollTo({
+                        top: offset,
+                        behavior: 'smooth'
+                    });
+                }, (i + 1) * 1000, { timeout: 60000 });
+                await page.waitForTimeout(2000);
             }
 
-            // Get car links again (already extracted above in successful attempt)
+            await page.waitForTimeout(3000);
+
+            // Extract car links (with timeout)
             const carLinks = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
                 return [...new Set(links.map(a => a.href))];
             }, { timeout: 60000 });
+
+            console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
+
+            // Debug if no links found
+            if (carLinks.length === 0) {
+                console.log('⚠️ No car links found - debugging...');
+                const currentUrl = page.url();
+                const pageTitle = await page.title();
+                console.log(`📍 Current URL: ${currentUrl}`);
+                console.log(`📄 Page title: ${pageTitle}`);
+
+                await Actor.setValue(`debug-screenshot-page${pageToScrape}.png`, await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
+                continue; // Skip to next page
+            }
 
             // Visit car detail pages and scrape
             const linksToVisit = carLinks.slice(0, maxResults);
@@ -639,8 +677,13 @@ await Actor.main(async () => {
 
     } catch (error) {
         console.error(`❌ Error processing pages ${pagesToScrape.join(', ')}:`, error.message);
+    } finally {
+        // Ensure browser cleanup
+        if (browser) {
+            await browser.close();
+            console.log('🔒 Browser closed');
+        }
     }
 
-    await browser.close();
     console.log('\n✅ Scraping complete!');
 });
