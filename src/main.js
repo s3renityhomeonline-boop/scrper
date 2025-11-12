@@ -23,7 +23,10 @@ async function applyFilters(page, filters, searchRadius) {
         await applyMakeFilter(page, filters.makes);
     }
 
-    // 4. DEAL RATING FILTER (Great/Good/Fair) - LAST
+    // 4. PRICE FILTER (Minimum $35,000)
+    await applyPriceFilter(page);
+
+    // 5. DEAL RATING FILTER (Great/Good/Fair) - LAST
     await applyDealRatingFilter(page, filters.dealRatings);
 
     console.log('✅ All filters applied successfully!');
@@ -101,6 +104,41 @@ async function applyMakeFilter(page, makes) {
         await page.waitForTimeout(2000); // Wait for results to update
     } catch (error) {
         console.log(`  ⚠️ Make filter error: ${error.message} (continuing...)`);
+    }
+}
+
+async function applyPriceFilter(page) {
+    try {
+        console.log(`💰 Setting minimum price to: $35,000 CAD`);
+
+        // Open Price accordion (6-minute timeout)
+        await page.click('#Price-accordion-trigger', { timeout: 360000 });
+        await page.waitForTimeout(1000);
+
+        // Find the MINIMUM slider specifically (not maximum)
+        const minSlider = page.locator('[role="slider"][aria-label="Minimum"]');
+        await minSlider.waitFor({ state: 'visible', timeout: 360000 });
+
+        // Click on the minimum slider to focus it
+        await minSlider.click({ timeout: 360000 });
+        await page.waitForTimeout(500);
+
+        // Set the slider value to 24 (which equals $35,000 CAD)
+        // Using keyboard arrow keys: press Home to go to 0, then Right arrow 24 times
+        await page.keyboard.press('Home'); // Reset to 0
+        await page.waitForTimeout(300);
+
+        // Press Right arrow 24 times to reach position 24 ($35,000)
+        for (let i = 0; i < 24; i++) {
+            await page.keyboard.press('ArrowRight');
+            await page.waitForTimeout(50); // Small delay between presses
+        }
+
+        console.log(`  ✅ Minimum price set to $35,000`);
+        await page.waitForTimeout(2000); // Wait for results to update
+
+    } catch (error) {
+        console.log(`  ⚠️ Price filter error: ${error.message} (continuing...)`);
     }
 }
 
