@@ -9,52 +9,44 @@ chromium.use(StealthPlugin());
 // FILTER AUTOMATION HELPERS
 // ============================================
 
-async function applyFilters(page, filters, location, searchRadius) {
+async function applyFilters(page, filters, searchRadius) {
     console.log('🎯 Applying UI filters...');
 
-    // 1. LOCATION/REGION UPDATE (FIRST - before other filters)
-    await updateLocation(page, location);
+    // 1. SEARCH RADIUS (Nationwide)
+    await setSearchRadius(page, searchRadius);
 
     // 2. BODY TYPE FILTER (Add Pickup Truck)
     await applyBodyTypeFilter(page, filters.bodyTypes);
 
-    // 3. DEAL RATING FILTER (Great/Good/Fair)
+    // 3. MAKE & MODEL FILTER (Ford, GMC, Chevrolet, Cadillac)
+    if (filters.makes && filters.makes.length > 0) {
+        await applyMakeFilter(page, filters.makes);
+    }
+
+    // 4. DEAL RATING FILTER (Great/Good/Fair) - LAST
     await applyDealRatingFilter(page, filters.dealRatings);
 
     console.log('✅ All filters applied successfully!');
 }
 
-async function updateLocation(page, postalCode) {
+async function setSearchRadius(page, searchRadius) {
     try {
-        console.log(`📍 Updating location to: ${postalCode}`);
+        console.log(`🌍 Setting search radius to: ${searchRadius === 'nationwide' ? 'Nationwide' : searchRadius + ' km'}`);
 
-        // Click the location button to open modal
-        await page.click('button[data-testid="zipCodeLink"]');
-        await page.waitForTimeout(1500);
-        console.log('  ✅ Location modal opened');
+        // Select the search distance dropdown
+        const dropdown = await page.locator('select[data-testid="select-filter-distance"]');
 
-        // Wait for modal and postal code input to be visible
-        await page.waitForSelector('#ZipInput', { state: 'visible', timeout: 5000 });
+        // Select the value (50000 for Nationwide, or specific km value)
+        const value = searchRadius === 'nationwide' ? '50000' : searchRadius.toString();
+        await dropdown.selectOption(value);
 
-        // Clear existing value and fill with new postal code
-        const zipInput = await page.locator('#ZipInput');
-        await zipInput.click();
-        await zipInput.fill(''); // Clear first
-        await page.waitForTimeout(300);
-        await zipInput.fill(postalCode);
-        await page.waitForTimeout(500);
-        console.log(`  ✅ Entered postal code: ${postalCode}`);
+        console.log(`  ✅ Search radius set successfully`);
 
-        // Click the Update button
-        await page.click('button[type="submit"]:has-text("Update")');
-        console.log('  ✅ Clicked Update button');
-
-        // Wait for page to reload and new results to load
-        await page.waitForTimeout(5000);
-        console.log('  ✅ Location updated successfully');
+        // Wait for results to update
+        await page.waitForTimeout(2000);
 
     } catch (error) {
-        console.log(`  ⚠️ Location update error: ${error.message} (continuing...)`);
+        console.log(`  ⚠️ Search radius error: ${error.message} (continuing...)`);
     }
 }
 
@@ -80,6 +72,35 @@ async function applyBodyTypeFilter(page, bodyTypes) {
         await page.waitForTimeout(2000); // Wait for results to update
     } catch (error) {
         console.log(`  ⚠️ Body type filter error: ${error.message} (continuing...)`);
+    }
+}
+
+async function applyMakeFilter(page, makes) {
+    try {
+        console.log(`🏭 Setting makes: ${makes.join(', ')}`);
+
+        // Open Make & Model accordion
+        await page.click('#MakeAndModel-accordion-trigger', { timeout: 360000 });
+        await page.waitForTimeout(1000);
+
+        // Click checkbox for each make (stable approach)
+        for (const make of makes) {
+            try {
+                // Handle special case: RAM needs to be uppercase to match button ID
+                const makeId = make.toUpperCase() === 'RAM' ? 'RAM' : make;
+
+                // Click the make button (escape dots in ID selector) with 6-minute timeout
+                await page.click(`#FILTER\\.MAKE_MODEL\\.${makeId}`, { timeout: 360000 });
+                console.log(`  ✅ Added ${make}`);
+                await page.waitForTimeout(500);
+            } catch (error) {
+                console.log(`  ⚠️ Could not click ${make}: ${error.message}`);
+            }
+        }
+
+        await page.waitForTimeout(2000); // Wait for results to update
+    } catch (error) {
+        console.log(`  ⚠️ Make filter error: ${error.message} (continuing...)`);
     }
 }
 
@@ -116,13 +137,12 @@ await Actor.main(async () => {
     const input = await Actor.getInput();
 
     const {
-        location = 'H3H',
-        searchRadius = 100,
+        searchRadius = 'nationwide',
         currentPage = null,
         maxPages = 73,
         maxResults = 24,
         filters = {
-            makes: ['Ford', 'GMC', 'Chevrolet', 'Toyota', 'Cadillac', 'Ram', 'Jeep'],
+            makes: ['Ford', 'GMC', 'Chevrolet', 'Cadillac'],
             bodyTypes: ['SUV / Crossover', 'Pickup Truck'],
             maxMileage: 140000,
             minPrice: 35000,
@@ -155,7 +175,7 @@ await Actor.main(async () => {
     }
 
     console.log(`📄 Scraping ${pagesToScrape.length} pages this run: ${pagesToScrape.join(', ')} of ${maxPages} total`);
-    console.log(`📍 Location: ${location} (${searchRadius} km radius)`);
+    console.log(`🌍 Search radius: ${searchRadius === 'nationwide' ? 'Nationwide' : searchRadius + ' km'}`);
     console.log(`📊 Max results per page: ${maxResults}`);
 
     // Launch browser with stealth
@@ -201,7 +221,7 @@ await Actor.main(async () => {
         await page.waitForTimeout(1000);
 
         // STEP 2: Apply all filters via UI (once for all pages)
-        await applyFilters(page, filters, location, searchRadius);
+        await applyFilters(page, filters, searchRadius);
 
         // STEP 3: Get the filtered URL with searchId
         await page.waitForTimeout(3000);
@@ -375,7 +395,7 @@ await Actor.main(async () => {
                         bodyType: listing.bodyType,
                         url: carUrl,
                         pageNumber: pageToScrape,
-                        location: location,
+                        searchRadius: searchRadius,
                         source: 'api',
                         hasApiData: true
                     };
@@ -440,7 +460,7 @@ await Actor.main(async () => {
                         };
                     });
                     carData.pageNumber = pageToScrape;
-                    carData.location = location;
+                    carData.searchRadius = searchRadius;
                 }
 
                 console.log(`  VIN: ${carData.vin || 'NOT FOUND'}`);
@@ -503,7 +523,7 @@ await Actor.main(async () => {
         await Actor.setValue('SCRAPER_STATE', {
             nextPage,
             baseUrl: baseUrlWithFilters,
-            location,
+            searchRadius,
             lastScraped: new Date().toISOString(),
             lastPage: lastPageScraped,
             pagesScraped: pagesToScrape
