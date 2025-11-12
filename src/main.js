@@ -324,46 +324,75 @@ await Actor.main(async () => {
             try {
                 const carPage = await context.newPage();
 
-                // Track API call
-                let detailListingData = null;
-                let apiResolved = false;
-
-                const detailListingPromise = new Promise((resolve) => {
-                    carPage.on('response', async (response) => {
-                        if (apiResolved) return;
-
-                        const url = response.url();
-
-                        if (url.includes('detailListingJson.action')) {
-                            console.log(`📡 Intercepted API call: detailListingJson.action`);
-                            try {
-                                const data = await response.json();
-                                detailListingData = data;
-                                apiResolved = true;
-                                resolve(data);
-                            } catch (e) {
-                                console.log(`⚠️ Failed to parse API response: ${e.message}`);
-                                resolve(null);
-                            }
-                        }
-                    });
-
-                    setTimeout(() => {
-                        if (!apiResolved) {
-                            console.log('⚠️ API timeout - extracting from DOM');
-                            resolve(null);
-                        }
-                    }, 35000);
-                });
-
+                // Navigate to car page
                 await carPage.goto(carUrl, {
                     waitUntil: 'domcontentloaded',
                     timeout: 60000
                 });
 
-                console.log('⏳ Waiting for detailListingJson.action...');
-                await detailListingPromise;
-                await carPage.waitForTimeout(2000);
+                // Try to get API data with retry logic
+                let detailListingData = null;
+                const maxApiAttempts = 2; // Try twice before falling back to DOM
+
+                for (let attempt = 1; attempt <= maxApiAttempts; attempt++) {
+                    console.log(`⏳ Waiting for detailListingJson.action (attempt ${attempt}/${maxApiAttempts})...`);
+
+                    let apiResolved = false;
+
+                    const detailListingPromise = new Promise((resolve) => {
+                        carPage.on('response', async (response) => {
+                            if (apiResolved) return;
+
+                            const url = response.url();
+
+                            if (url.includes('detailListingJson.action')) {
+                                console.log(`📡 Intercepted API call: detailListingJson.action`);
+                                try {
+                                    // Race condition: timeout on JSON parsing (25 seconds)
+                                    const jsonPromise = response.json();
+                                    const timeoutPromise = new Promise((_, reject) =>
+                                        setTimeout(() => reject(new Error('JSON parse timeout')), 25000)
+                                    );
+
+                                    const data = await Promise.race([jsonPromise, timeoutPromise]);
+                                    apiResolved = true;
+                                    resolve(data);
+                                } catch (e) {
+                                    console.log(`⚠️ Failed to parse API response: ${e.message}`);
+                                    apiResolved = true;
+                                    resolve(null);
+                                }
+                            }
+                        });
+
+                        // Overall API timeout (90 seconds = 2.5x of 35s)
+                        setTimeout(() => {
+                            if (!apiResolved) {
+                                console.log(`⚠️ API timeout on attempt ${attempt}`);
+                                apiResolved = true;
+                                resolve(null);
+                            }
+                        }, 90000);
+                    });
+
+                    detailListingData = await detailListingPromise;
+
+                    // If we got data, break out of retry loop
+                    if (detailListingData && detailListingData.listing) {
+                        console.log(`✅ API data received successfully`);
+                        break;
+                    }
+
+                    // If this was the last attempt, log and continue to DOM fallback
+                    if (attempt === maxApiAttempts) {
+                        console.log(`⚠️ All API attempts failed, falling back to DOM extraction`);
+                    } else {
+                        console.log(`🔄 Retrying API call...`);
+                        await carPage.waitForTimeout(2000); // Small delay before retry
+                    }
+                }
+
+                await carPage.waitForTimeout(1000);
 
                 // Parse data from API response
                 let carData = {};
