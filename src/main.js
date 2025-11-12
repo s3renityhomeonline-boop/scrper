@@ -278,79 +278,117 @@ await Actor.main(async () => {
             console.log(`📄 Processing page ${pageToScrape} of ${maxPages}`);
             console.log(`${'='.repeat(60)}\n`);
 
-            // Navigate to specific page if needed by clicking Next button (human-like)
-            if (pageToScrape !== currentPageNumber) {
-                const clicksNeeded = pageToScrape - currentPageNumber;
-                console.log(`🔄 Navigating from page ${currentPageNumber} to page ${pageToScrape} (${clicksNeeded} clicks)...`);
+            // Retry logic for page processing (2 attempts)
+            let pageProcessed = false;
+            const maxPageAttempts = 2;
 
-                for (let i = 0; i < clicksNeeded; i++) {
-                    try {
-                        // Scroll to bottom to make pagination visible
-                        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-                        await page.waitForTimeout(800);
+            for (let pageAttempt = 1; pageAttempt <= maxPageAttempts; pageAttempt++) {
+                try {
+                    if (pageAttempt > 1) {
+                        console.log(`🔄 Retry attempt ${pageAttempt}/${maxPageAttempts} for page ${pageToScrape}...`);
+                    }
 
-                        // Wait for and click the Next button (2-minute timeout)
-                        const nextButton = page.locator('button[data-testid="srp-desktop-page-navigation-next-page"]');
-                        await nextButton.waitFor({ state: 'visible', timeout: 120000 });
-                        await nextButton.click({ timeout: 120000 });
+                    // Navigate to specific page if needed by clicking Next button (human-like)
+                    if (pageToScrape !== currentPageNumber) {
+                        const clicksNeeded = pageToScrape - currentPageNumber;
+                        console.log(`🔄 Navigating from page ${currentPageNumber} to page ${pageToScrape} (${clicksNeeded} clicks)...`);
 
-                        console.log(`  ✅ Clicked Next button (${i + 1}/${clicksNeeded})`);
+                        for (let i = 0; i < clicksNeeded; i++) {
+                            try {
+                                // Scroll to bottom to make pagination visible (with timeout)
+                                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight), { timeout: 60000 });
+                                await page.waitForTimeout(800);
 
-                        // Wait for new page to load
-                        await page.waitForTimeout(4000);
-                    } catch (error) {
-                        console.log(`  ⚠️ Next button click failed: ${error.message}`);
-                        // Fallback to hash navigation if Next button fails
-                        console.log(`  🔄 Falling back to hash navigation...`);
-                        await page.evaluate((pageNum) => {
-                            window.location.hash = `resultsPage=${pageNum}`;
-                        }, pageToScrape);
+                                // Wait for and click the Next button (2-minute timeout)
+                                const nextButton = page.locator('button[data-testid="srp-desktop-page-navigation-next-page"]');
+                                await nextButton.waitFor({ state: 'visible', timeout: 120000 });
+                                await nextButton.click({ timeout: 120000 });
+
+                                console.log(`  ✅ Clicked Next button (${i + 1}/${clicksNeeded})`);
+
+                                // Wait for new page to load
+                                await page.waitForTimeout(4000);
+                            } catch (error) {
+                                console.log(`  ⚠️ Next button click failed: ${error.message}`);
+                                // Fallback to hash navigation if Next button fails
+                                console.log(`  🔄 Falling back to hash navigation...`);
+                                await page.evaluate((pageNum) => {
+                                    window.location.hash = `resultsPage=${pageNum}`;
+                                }, pageToScrape, { timeout: 60000 });
+                                await page.waitForTimeout(5000);
+                                break; // Exit the clicking loop since we used hash navigation
+                            }
+                        }
+
+                        // Scroll to top after navigation (with timeout)
+                        await page.evaluate(() => window.scrollTo(0, 0), { timeout: 60000 });
+                        await page.waitForTimeout(1000);
+
+                        // Update current page tracker
+                        currentPageNumber = pageToScrape;
+                    }
+
+                    // Scroll to load car links (with timeouts)
+                    console.log('📜 Scrolling to load content...');
+                    for (let i = 0; i < 3; i++) {
+                        await page.evaluate((offset) => {
+                            window.scrollTo({
+                                top: offset,
+                                behavior: 'smooth'
+                            });
+                        }, (i + 1) * 1000, { timeout: 60000 });
+                        await page.waitForTimeout(2000);
+                    }
+
+                    await page.waitForTimeout(3000);
+
+                    // Extract car links (with timeout)
+                    const carLinks = await page.evaluate(() => {
+                        const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
+                        return [...new Set(links.map(a => a.href))];
+                    }, { timeout: 60000 });
+
+                    console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
+
+                    // Debug if no links found
+                    if (carLinks.length === 0) {
+                        console.log('⚠️ No car links found - debugging...');
+                        const currentUrl = page.url();
+                        const pageTitle = await page.title();
+                        console.log(`📍 Current URL: ${currentUrl}`);
+                        console.log(`📄 Page title: ${pageTitle}`);
+
+                        await Actor.setValue(`debug-screenshot-page${pageToScrape}.png`, await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
+
+                        // If no links found, throw error to trigger retry
+                        throw new Error('No car links found on page');
+                    }
+
+                    // Mark as successfully processed and break retry loop
+                    pageProcessed = true;
+                    break;
+
+                } catch (pageError) {
+                    console.error(`❌ Error on page ${pageToScrape} (attempt ${pageAttempt}/${maxPageAttempts}): ${pageError.message}`);
+
+                    if (pageAttempt < maxPageAttempts) {
+                        console.log('⏳ Waiting 5 seconds before retry...');
                         await page.waitForTimeout(5000);
-                        break; // Exit the clicking loop since we used hash navigation
                     }
                 }
-
-                // Scroll to top after navigation
-                await page.evaluate(() => window.scrollTo(0, 0));
-                await page.waitForTimeout(1000);
-
-                // Update current page tracker
-                currentPageNumber = pageToScrape;
             }
 
-            // Scroll to load car links
-            console.log('📜 Scrolling to load content...');
-            for (let i = 0; i < 3; i++) {
-                await page.evaluate((offset) => {
-                    window.scrollTo({
-                        top: offset,
-                        behavior: 'smooth'
-                    });
-                }, (i + 1) * 1000);
-                await page.waitForTimeout(2000);
+            // If page failed after all retries, skip it and continue
+            if (!pageProcessed) {
+                console.log(`⚠️ Skipping page ${pageToScrape} after ${maxPageAttempts} failed attempts`);
+                continue; // Skip to next page
             }
 
-            await page.waitForTimeout(3000);
-
-            // Extract car links
+            // Get car links again (already extracted above in successful attempt)
             const carLinks = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
                 return [...new Set(links.map(a => a.href))];
-            });
-
-            console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
-
-            // Debug if no links found
-            if (carLinks.length === 0) {
-                console.log('⚠️ No car links found - debugging...');
-                const currentUrl = page.url();
-                const pageTitle = await page.title();
-                console.log(`📍 Current URL: ${currentUrl}`);
-                console.log(`📄 Page title: ${pageTitle}`);
-
-                await Actor.setValue(`debug-screenshot-page${pageToScrape}.png`, await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
-                continue; // Skip to next page
-            }
+            }, { timeout: 60000 });
 
             // Visit car detail pages and scrape
             const linksToVisit = carLinks.slice(0, maxResults);
