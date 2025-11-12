@@ -33,11 +33,12 @@ async function setSearchRadius(page, searchRadius) {
     try {
         console.log(`🌍 Setting search radius to: ${searchRadius === 50000 ? 'Nationwide' : searchRadius + ' km'}`);
 
-        // Select the search distance dropdown
+        // Select the search distance dropdown (6-minute timeout)
         const dropdown = await page.locator('select[data-testid="select-filter-distance"]');
+        await dropdown.waitFor({ state: 'visible', timeout: 360000 });
 
         // Select the value (50000 for Nationwide, or specific km value)
-        await dropdown.selectOption(searchRadius.toString());
+        await dropdown.selectOption(searchRadius.toString(), { timeout: 360000 });
 
         console.log(`  ✅ Search radius set successfully`);
 
@@ -53,15 +54,15 @@ async function applyBodyTypeFilter(page, bodyTypes) {
     try {
         console.log(`🚗 Setting body types: ${bodyTypes.join(', ')}`);
 
-        // Open Body Style accordion
-        await page.click('#BodyStyle-accordion-trigger');
+        // Open Body Style accordion (6-minute timeout)
+        await page.click('#BodyStyle-accordion-trigger', { timeout: 360000 });
         await page.waitForTimeout(1000);
 
         // Click checkboxes for each body type
         for (const bodyType of bodyTypes) {
             if (bodyType.includes('Pickup')) {
-                // Find and click Pickup Truck checkbox
-                await page.click('button[id*="PICKUP"], label:has-text("Pickup Truck")');
+                // Find and click Pickup Truck checkbox (6-minute timeout)
+                await page.click('button[id*="PICKUP"], label:has-text("Pickup Truck")', { timeout: 360000 });
                 await page.waitForTimeout(500);
                 console.log('  ✅ Added Pickup Truck');
             }
@@ -107,14 +108,15 @@ async function applyDealRatingFilter(page, dealRatings) {
     try {
         console.log(`⭐ Setting deal ratings: ${dealRatings.join(', ')}`);
 
-        // Open Deal Rating accordion
-        await page.click('#DealRating-accordion-trigger');
+        // Open Deal Rating accordion (6-minute timeout)
+        await page.click('#DealRating-accordion-trigger', { timeout: 360000 });
         await page.waitForTimeout(1000);
 
         // Click checkboxes for each deal rating
         for (const rating of dealRatings) {
             try {
-                await page.click(`#FILTER\\.DEAL_RATING\\.${rating}`);
+                // Click with 6-minute timeout
+                await page.click(`#FILTER\\.DEAL_RATING\\.${rating}`, { timeout: 360000 });
                 console.log(`  ✅ Added ${rating.replace('_', ' ')}`);
                 await page.waitForTimeout(300);
             } catch (error) {
