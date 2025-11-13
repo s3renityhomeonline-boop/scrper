@@ -11,8 +11,8 @@
   "author": "Your Name",
   "license": "ISC",
   "dependencies": {
-    "apify": "^3.1.10",
-    "playwright": "^1.40.1",
+    "apify": "^3.5.1",
+    "playwright": "^1.44.1",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
