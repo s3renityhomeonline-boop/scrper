@@ -278,117 +278,79 @@ await Actor.main(async () => {
             console.log(`📄 Processing page ${pageToScrape} of ${maxPages}`);
             console.log(`${'='.repeat(60)}\n`);
 
-            // Retry logic for page processing (2 attempts)
-            let pageProcessed = false;
-            const maxPageAttempts = 2;
+            // Navigate to specific page if needed by clicking Next button (human-like)
+            if (pageToScrape !== currentPageNumber) {
+                const clicksNeeded = pageToScrape - currentPageNumber;
+                console.log(`🔄 Navigating from page ${currentPageNumber} to page ${pageToScrape} (${clicksNeeded} clicks)...`);
 
-            for (let pageAttempt = 1; pageAttempt <= maxPageAttempts; pageAttempt++) {
-                try {
-                    if (pageAttempt > 1) {
-                        console.log(`🔄 Retry attempt ${pageAttempt}/${maxPageAttempts} for page ${pageToScrape}...`);
-                    }
+                for (let i = 0; i < clicksNeeded; i++) {
+                    try {
+                        // Scroll to bottom to make pagination visible
+                        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                        await page.waitForTimeout(800);
 
-                    // Navigate to specific page if needed by clicking Next button (human-like)
-                    if (pageToScrape !== currentPageNumber) {
-                        const clicksNeeded = pageToScrape - currentPageNumber;
-                        console.log(`🔄 Navigating from page ${currentPageNumber} to page ${pageToScrape} (${clicksNeeded} clicks)...`);
+                        // Wait for and click the Next button (2-minute timeout)
+                        const nextButton = page.locator('button[data-testid="srp-desktop-page-navigation-next-page"]');
+                        await nextButton.waitFor({ state: 'visible', timeout: 120000 });
+                        await nextButton.click({ timeout: 120000 });
 
-                        for (let i = 0; i < clicksNeeded; i++) {
-                            try {
-                                // Scroll to bottom to make pagination visible
-                                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-                                await page.waitForTimeout(800);
+                        console.log(`  ✅ Clicked Next button (${i + 1}/${clicksNeeded})`);
 
-                                // Wait for and click the Next button (2-minute timeout)
-                                const nextButton = page.locator('button[data-testid="srp-desktop-page-navigation-next-page"]');
-                                await nextButton.waitFor({ state: 'visible', timeout: 120000 });
-                                await nextButton.click({ timeout: 120000 });
-
-                                console.log(`  ✅ Clicked Next button (${i + 1}/${clicksNeeded})`);
-
-                                // Wait for new page to load
-                                await page.waitForTimeout(4000);
-                            } catch (error) {
-                                console.log(`  ⚠️ Next button click failed: ${error.message}`);
-                                // Fallback to hash navigation if Next button fails
-                                console.log(`  🔄 Falling back to hash navigation...`);
-                                await page.evaluate((pageNum) => {
-                                    window.location.hash = `resultsPage=${pageNum}`;
-                                }, pageToScrape);
-                                await page.waitForTimeout(5000);
-                                break; // Exit the clicking loop since we used hash navigation
-                            }
-                        }
-
-                        // Scroll to top after navigation
-                        await page.evaluate(() => window.scrollTo(0, 0));
-                        await page.waitForTimeout(1000);
-
-                        // Update current page tracker
-                        currentPageNumber = pageToScrape;
-                    }
-
-                    // Scroll to load car links
-                    console.log('📜 Scrolling to load content...');
-                    for (let i = 0; i < 3; i++) {
-                        await page.evaluate((offset) => {
-                            window.scrollTo({
-                                top: offset,
-                                behavior: 'smooth'
-                            });
-                        }, (i + 1) * 1000);
-                        await page.waitForTimeout(2000);
-                    }
-
-                    await page.waitForTimeout(3000);
-
-                    // Extract car links
-                    const carLinks = await page.evaluate(() => {
-                        const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
-                        return [...new Set(links.map(a => a.href))];
-                    });
-
-                    console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
-
-                    // Debug if no links found
-                    if (carLinks.length === 0) {
-                        console.log('⚠️ No car links found - debugging...');
-                        const currentUrl = page.url();
-                        const pageTitle = await page.title();
-                        console.log(`📍 Current URL: ${currentUrl}`);
-                        console.log(`📄 Page title: ${pageTitle}`);
-
-                        await Actor.setValue(`debug-screenshot-page${pageToScrape}.png`, await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
-
-                        // If no links found, throw error to trigger retry
-                        throw new Error('No car links found on page');
-                    }
-
-                    // Mark as successfully processed and break retry loop
-                    pageProcessed = true;
-                    break;
-
-                } catch (pageError) {
-                    console.error(`❌ Error on page ${pageToScrape} (attempt ${pageAttempt}/${maxPageAttempts}): ${pageError.message}`);
-
-                    if (pageAttempt < maxPageAttempts) {
-                        console.log('⏳ Waiting 5 seconds before retry...');
+                        // Wait for new page to load
+                        await page.waitForTimeout(4000);
+                    } catch (error) {
+                        console.log(`  ⚠️ Next button click failed: ${error.message}`);
+                        // Fallback to hash navigation if Next button fails
+                        console.log(`  🔄 Falling back to hash navigation...`);
+                        await page.evaluate((pageNum) => {
+                            window.location.hash = `resultsPage=${pageNum}`;
+                        }, pageToScrape);
                         await page.waitForTimeout(5000);
+                        break; // Exit the clicking loop since we used hash navigation
                     }
                 }
+
+                // Scroll to top after navigation
+                await page.evaluate(() => window.scrollTo(0, 0));
+                await page.waitForTimeout(1000);
+
+                // Update current page tracker
+                currentPageNumber = pageToScrape;
             }
 
-            // If page failed after all retries, skip it and continue
-            if (!pageProcessed) {
-                console.log(`⚠️ Skipping page ${pageToScrape} after ${maxPageAttempts} failed attempts`);
-                continue; // Skip to next page
+            // Scroll to load car links
+            console.log('📜 Scrolling to load content...');
+            for (let i = 0; i < 3; i++) {
+                await page.evaluate((offset) => {
+                    window.scrollTo({
+                        top: offset,
+                        behavior: 'smooth'
+                    });
+                }, (i + 1) * 1000);
+                await page.waitForTimeout(2000);
             }
 
-            // Get car links again (already extracted above in successful attempt)
+            await page.waitForTimeout(3000);
+
+            // Extract car links
             const carLinks = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[href*="vdp.action"]'));
                 return [...new Set(links.map(a => a.href))];
             });
+
+            console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
+
+            // Debug if no links found
+            if (carLinks.length === 0) {
+                console.log('⚠️ No car links found - debugging...');
+                const currentUrl = page.url();
+                const pageTitle = await page.title();
+                console.log(`📍 Current URL: ${currentUrl}`);
+                console.log(`📄 Page title: ${pageTitle}`);
+
+                await Actor.setValue(`debug-screenshot-page${pageToScrape}.png`, await page.screenshot({ fullPage: false }), { contentType: 'image/png' });
+                continue; // Skip to next page
+            }
 
             // Visit car detail pages and scrape
             const linksToVisit = carLinks.slice(0, maxResults);
@@ -484,6 +446,18 @@ await Actor.main(async () => {
                         if (vinSpec) vin = vinSpec.displayValue;
                     }
 
+                    // Try to extract fuel type from specifications array
+                    let fuelType = null;
+                    if (listing.specifications) {
+                        const fuelSpec = listing.specifications.find(s =>
+                            s.displayName && (
+                                s.displayName.toLowerCase().includes('fuel') ||
+                                s.displayName.toLowerCase().includes('engine')
+                            )
+                        );
+                        if (fuelSpec) fuelType = fuelSpec.displayValue;
+                    }
+
                     carData = {
                         vin,
                         title: `${listing.modelYear || ''} ${listing.makeName || ''} ${listing.modelName || ''} ${listing.trimName || ''}`.trim(),
@@ -495,10 +469,12 @@ await Actor.main(async () => {
                         trim: listing.trimName,
                         mileage: listing.mileage,
                         mileageString: listing.mileageString,
-                        dealerName: listing.sellerName,
-                        dealerCity: listing.sellerCity,
+                        dealerName: listing.sellerName || listing.seller?.name,
+                        dealerCity: listing.sellerCity || listing.seller?.city,
+                        dealerAddress: listing.seller?.address,
                         dealRating: listing.dealBadgeText,
                         bodyType: listing.bodyType,
+                        fuelType: fuelType || listing.fuelType,
                         url: carUrl,
                         pageNumber: pageToScrape,
                         searchRadius: searchRadius,
@@ -506,24 +482,36 @@ await Actor.main(async () => {
                         hasApiData: true
                     };
 
-                    // Fallback: If year or bodyType missing from API, scrape from DOM
-                    if (!carData.year || !carData.bodyType) {
+                    // Fallback: If critical fields missing from API, scrape from DOM
+                    if (!carData.year || !carData.bodyType || !carData.dealerName || !carData.dealerCity || !carData.fuelType) {
                         const domData = await carPage.evaluate(() => {
                             const yearEl = document.querySelector('div[data-cg-ft="year"] span._value_ujq1z_13');
                             const bodyTypeEl = document.querySelector('div[data-cg-ft="bodyType"] span._value_ujq1z_13');
+                            const fuelTypeEl = document.querySelector('div[data-cg-ft="fuelType"] span._value_ujq1z_13');
+
+                            // Extract dealer info from seller section
+                            const dealerNameEl = document.querySelector('[data-testid="seller-name"]') ||
+                                                document.querySelector('.seller-name') ||
+                                                document.querySelector('a[href*="/dealer/"]');
+
+                            const dealerLocationEl = document.querySelector('[data-testid="seller-location"]') ||
+                                                     document.querySelector('.seller-location') ||
+                                                     document.querySelector('[class*="seller"] [class*="location"]');
 
                             return {
                                 year: yearEl ? yearEl.textContent.trim() : null,
-                                bodyType: bodyTypeEl ? bodyTypeEl.textContent.trim() : null
+                                bodyType: bodyTypeEl ? bodyTypeEl.textContent.trim() : null,
+                                fuelType: fuelTypeEl ? fuelTypeEl.textContent.trim() : null,
+                                dealerName: dealerNameEl ? dealerNameEl.textContent.trim() : null,
+                                dealerCity: dealerLocationEl ? dealerLocationEl.textContent.trim() : null
                             };
                         });
 
-                        if (!carData.year && domData.year) {
-                            carData.year = domData.year;
-                        }
-                        if (!carData.bodyType && domData.bodyType) {
-                            carData.bodyType = domData.bodyType;
-                        }
+                        if (!carData.year && domData.year) carData.year = domData.year;
+                        if (!carData.bodyType && domData.bodyType) carData.bodyType = domData.bodyType;
+                        if (!carData.fuelType && domData.fuelType) carData.fuelType = domData.fuelType;
+                        if (!carData.dealerName && domData.dealerName) carData.dealerName = domData.dealerName;
+                        if (!carData.dealerCity && domData.dealerCity) carData.dealerCity = domData.dealerCity;
                     }
                 } else {
                     // Fallback: try window.__PREFLIGHT__
@@ -539,12 +527,34 @@ await Actor.main(async () => {
                             if (vinSpec) vin = vinSpec.value;
                         }
 
+                        // Try to extract fuel type from specs
+                        let fuelType = null;
+                        if (listing.specs) {
+                            const fuelSpec = listing.specs.find(s =>
+                                s.label && (
+                                    s.label.toLowerCase().includes('fuel') ||
+                                    s.label.toLowerCase().includes('engine')
+                                )
+                            );
+                            if (fuelSpec) fuelType = fuelSpec.value;
+                        }
+
                         const titleEl = document.querySelector('h1');
                         const title = titleEl ? titleEl.textContent.trim() : '';
 
-                        // Extract year and bodyType from DOM
+                        // Extract from DOM
                         const yearEl = document.querySelector('div[data-cg-ft="year"] span._value_ujq1z_13');
                         const bodyTypeEl = document.querySelector('div[data-cg-ft="bodyType"] span._value_ujq1z_13');
+                        const fuelTypeEl = document.querySelector('div[data-cg-ft="fuelType"] span._value_ujq1z_13');
+
+                        // Extract dealer info
+                        const dealerNameEl = document.querySelector('[data-testid="seller-name"]') ||
+                                            document.querySelector('.seller-name') ||
+                                            document.querySelector('a[href*="/dealer/"]');
+
+                        const dealerLocationEl = document.querySelector('[data-testid="seller-location"]') ||
+                                                 document.querySelector('.seller-location') ||
+                                                 document.querySelector('[class*="seller"] [class*="location"]');
 
                         return {
                             vin,
@@ -556,10 +566,11 @@ await Actor.main(async () => {
                             model: listing.model || preflight.listingModel,
                             trim: listing.trim,
                             mileage: listing.mileage || listing.odometer,
-                            dealerName: listing.dealerName || preflight.listingSellerName,
-                            dealerCity: listing.dealerCity || preflight.listingSellerCity,
+                            dealerName: dealerNameEl ? dealerNameEl.textContent.trim() : (listing.dealerName || preflight.listingSellerName),
+                            dealerCity: dealerLocationEl ? dealerLocationEl.textContent.trim() : (listing.dealerCity || preflight.listingSellerCity),
                             dealRating: listing.dealRating || listing.dealBadge,
                             bodyType: bodyTypeEl ? bodyTypeEl.textContent.trim() : listing.bodyType,
+                            fuelType: fuelTypeEl ? fuelTypeEl.textContent.trim() : fuelType,
                             url: window.location.href,
                             source: 'dom',
                             hasApiData: false
@@ -575,6 +586,8 @@ await Actor.main(async () => {
                 console.log(`  Year: ${carData.year || 'NOT FOUND'}`);
                 console.log(`  Mileage: ${carData.mileageString || carData.mileage || 'NOT FOUND'}`);
                 console.log(`  Body Type: ${carData.bodyType || 'NOT FOUND'}`);
+                console.log(`  Fuel Type: ${carData.fuelType || 'NOT FOUND'}`);
+                console.log(`  Dealer: ${carData.dealerName || 'NOT FOUND'} - ${carData.dealerCity || 'NOT FOUND'}`);
                 console.log(`  Source: ${carData.source} (API: ${carData.hasApiData})`);
 
                 // Save car data
