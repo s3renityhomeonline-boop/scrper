@@ -228,7 +228,7 @@ await Actor.main(async () => {
         ],
     });
 
-    let context = await browser.newContext({
+    const context = await browser.newContext({
         viewport: { width: 1920, height: 1080 },
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         locale: 'en-CA',
@@ -237,10 +237,7 @@ await Actor.main(async () => {
         permissions: ['geolocation'],
     });
 
-    // Set default navigation timeout to 90 seconds (prevents 30s default timeout)
-    context.setDefaultNavigationTimeout(90000);
-
-    let page = await context.newPage();
+    const page = await context.newPage();
 
     try {
         // STEP 1: Navigate to base SUV page
@@ -633,47 +630,6 @@ await Actor.main(async () => {
                 console.error(`❌ Error processing car ${carUrl}:`, error.message);
             }
         }
-
-            // Recycle browser context after each page to prevent memory crashes
-            const pageIndex = pagesToScrape.indexOf(pageToScrape);
-            const isLastPage = pageIndex === pagesToScrape.length - 1;
-
-            if (!isLastPage) {
-                console.log('\n♻️ Recycling browser context for stability...');
-
-                // Close old context
-                await context.close();
-
-                // Create fresh context with same settings
-                context = await browser.newContext({
-                    viewport: { width: 1920, height: 1080 },
-                    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    locale: 'en-CA',
-                    timezoneId: 'America/Toronto',
-                    geolocation: { longitude: -79.3832, latitude: 43.6532 },
-                    permissions: ['geolocation'],
-                });
-
-                // Create new page
-                page = await context.newPage();
-
-                // Navigate to the filtered search page with the next page number
-                const nextPageToScrape = pagesToScrape[pageIndex + 1];
-                const targetUrl = baseUrlWithFilters + '#resultsPage=' + nextPageToScrape;
-                console.log(`🌐 Navigating to: ${targetUrl}`);
-
-                await page.goto(targetUrl, {
-                    waitUntil: 'domcontentloaded',
-                    timeout: 90000
-                });
-
-                await page.waitForTimeout(5000);
-
-                // Update current page tracker
-                currentPageNumber = nextPageToScrape;
-
-                console.log(`✅ Browser context recycled successfully`);
-            }
 
         } // End of page loop
 
