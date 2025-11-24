@@ -353,17 +353,15 @@ await Actor.main(async () => {
             // Extract car links
             const carLinks = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[data-testid="car-blade-link"]'));
-                const baseUrl = window.location.origin;
+                const currentUrl = window.location.href.split('#')[0]; // Base URL without hash
 
                 return [...new Set(links.map(a => {
                     const href = a.getAttribute('href');
 
                     // Handle hash-based links: #listing=433035737/NONE/DEFAULT
                     if (href && href.startsWith('#listing=')) {
-                        // Extract listing ID from hash
-                        const listingId = href.replace('#listing=', '').split('/')[0];
-                        // Construct proper VDP URL
-                        return `${baseUrl}/Cars/inventoryListing/viewDetailsFilterViewInventoryListing.action?listing=${listingId}`;
+                        // Keep the full hash format for SPA routing
+                        return `${currentUrl}${href}`;
                     }
 
                     // Return full URL if already complete
@@ -395,11 +393,18 @@ await Actor.main(async () => {
             try {
                 const carPage = await context.newPage();
 
-                // Navigate to car page
+                // Navigate to car page (SPA with hash routing)
                 await carPage.goto(carUrl, {
                     waitUntil: 'domcontentloaded',
                     timeout: 60000
                 });
+
+                // Wait for SPA detail view to load
+                try {
+                    await carPage.waitForSelector('div[data-cg-ft="listing-vdp-stats"]', { timeout: 10000 });
+                } catch (e) {
+                    console.log(`  ⚠️ Detail view not loaded: ${e.message}`);
+                }
 
                 // Try to get API data with retry logic
                 let detailListingData = null;
@@ -547,12 +552,22 @@ await Actor.main(async () => {
                         if (!carData.dealerAddress && domData.dealerAddress) carData.dealerAddress = domData.dealerAddress;
                     }
                 } else {
-                    // Fallback: try window.__PREFLIGHT__
+                    // Fallback: try window.__PREFLIGHT__ and DOM
                     carData = await carPage.evaluate(() => {
                         const preflight = window.__PREFLIGHT__ || {};
                         const listing = preflight.listing || {};
 
-                        let vin = listing.vin || null;
+                        // Extract from new DOM structure first (data-cg-ft attributes)
+                        const vinEl = document.querySelector('div[data-cg-ft="vin"] span._value_ujq1z_13');
+                        const makeEl = document.querySelector('div[data-cg-ft="make"] span._value_ujq1z_13');
+                        const modelEl = document.querySelector('div[data-cg-ft="model"] span._value_ujq1z_13');
+                        const trimEl = document.querySelector('div[data-cg-ft="trim"] span._value_ujq1z_13');
+                        const yearEl = document.querySelector('div[data-cg-ft="year"] span._value_ujq1z_13');
+                        const bodyTypeEl = document.querySelector('div[data-cg-ft="bodyType"] span._value_ujq1z_13');
+                        const fuelTypeEl = document.querySelector('div[data-cg-ft="fuelType"] span._value_ujq1z_13');
+                        const mileageEl = document.querySelector('div[data-cg-ft="mileage"] span._value_ujq1z_13');
+
+                        let vin = vinEl ? vinEl.textContent.trim() : (listing.vin || null);
                         if (!vin && listing.specs) {
                             const vinSpec = listing.specs.find(s =>
                                 s.label && s.label.toLowerCase() === 'vin'
@@ -560,9 +575,9 @@ await Actor.main(async () => {
                             if (vinSpec) vin = vinSpec.value;
                         }
 
-                        // Try to extract fuel type from specs
-                        let fuelType = null;
-                        if (listing.specs) {
+                        // Try to extract fuel type from specs if not in DOM
+                        let fuelType = fuelTypeEl ? fuelTypeEl.textContent.trim() : null;
+                        if (!fuelType && listing.specs) {
                             const fuelSpec = listing.specs.find(s =>
                                 s.label && (
                                     s.label.toLowerCase().includes('fuel') ||
@@ -575,11 +590,6 @@ await Actor.main(async () => {
                         const titleEl = document.querySelector('h1');
                         const title = titleEl ? titleEl.textContent.trim() : '';
 
-                        // Extract from DOM
-                        const yearEl = document.querySelector('div[data-cg-ft="year"] span._value_ujq1z_13');
-                        const bodyTypeEl = document.querySelector('div[data-cg-ft="bodyType"] span._value_ujq1z_13');
-                        const fuelTypeEl = document.querySelector('div[data-cg-ft="fuelType"] span._value_ujq1z_13');
-
                         // Extract dealer info
                         const dealerNameEl = document.querySelector('[data-testid="dealerName"]');
                         const locationFromTitle = document.querySelector('hgroup p.oqywn.sCSIz');
@@ -591,16 +601,16 @@ await Actor.main(async () => {
                             price: preflight.listingPriceValue || listing.price,
                             priceString: preflight.listingPriceString || listing.priceString,
                             year: yearEl ? yearEl.textContent.trim() : (listing.year || preflight.listingYear),
-                            make: listing.make || preflight.listingMake,
-                            model: listing.model || preflight.listingModel,
-                            trim: listing.trim,
-                            mileage: listing.mileage || listing.odometer,
+                            make: makeEl ? makeEl.textContent.trim() : (listing.make || preflight.listingMake),
+                            model: modelEl ? modelEl.textContent.trim() : (listing.model || preflight.listingModel),
+                            trim: trimEl ? trimEl.textContent.trim() : listing.trim,
+                            mileage: mileageEl ? mileageEl.textContent.trim() : (listing.mileage || listing.odometer),
                             dealerName: dealerNameEl ? dealerNameEl.textContent.trim() : (listing.dealerName || preflight.listingSellerName),
                             dealerCity: locationFromTitle ? locationFromTitle.textContent.trim() : (listing.dealerCity || preflight.listingSellerCity),
                             dealerAddress: dealerAddressEl ? dealerAddressEl.textContent.trim() : null,
                             dealRating: listing.dealRating || listing.dealBadge,
                             bodyType: bodyTypeEl ? bodyTypeEl.textContent.trim() : listing.bodyType,
-                            fuelType: fuelTypeEl ? fuelTypeEl.textContent.trim() : fuelType,
+                            fuelType: fuelType,
                             url: window.location.href,
                             source: 'dom',
                             hasApiData: false
