@@ -26,8 +26,11 @@ async function applyFilters(page, filters, searchRadius) {
     // 4. PRICE FILTER (Minimum $35,000)
     await applyPriceFilter(page);
 
-    // 5. DEAL RATING FILTER (Great/Good/Fair) - LAST
+    // 5. DEAL RATING FILTER (Great/Good/Fair)
     await applyDealRatingFilter(page, filters.dealRatings);
+
+    // 6. SORT BY NEWEST LISTINGS - LAST
+    await applySortByNewest(page);
 
     console.log('✅ All filters applied successfully!');
 }
@@ -168,6 +171,29 @@ async function applyDealRatingFilter(page, dealRatings) {
     }
 }
 
+async function applySortByNewest(page) {
+    try {
+        console.log(`🆕 Setting sort order to: Newest listings first`);
+
+        // Click the sort dropdown button to open it
+        const sortButton = page.locator('button[role="combobox"][aria-label="Sort by:"]');
+        await sortButton.waitFor({ state: 'visible', timeout: 360000 });
+        await sortButton.click({ timeout: 360000 });
+
+        console.log(`  ✅ Opened sort dropdown`);
+        await page.waitForTimeout(1000);
+
+        // Click the actual dropdown option (div with role="option")
+        await page.click('div[role="option"]:has-text("Newest listings first")', { timeout: 360000 });
+
+        console.log(`  ✅ Selected "Newest listings first"`);
+        await page.waitForTimeout(2000); // Wait for results to update
+
+    } catch (error) {
+        console.log(`  ⚠️ Sort by newest error: ${error.message} (continuing...)`);
+    }
+}
+
 // ============================================
 // MAIN SCRAPER
 // ============================================
@@ -192,7 +218,7 @@ await Actor.main(async () => {
     console.log('🚀 Starting CarGurus Stealth Scraper with UI Filters...');
 
     // Open persistent Key-Value Store (survives between runs)
-    const kv = await Actor.openKeyValueStore('scraper-state');
+    const kv = await Actor.openKeyValueStore('scraper-state-newest');
 
     // Get or initialize page state with daily reset
     let startPage = currentPage;
@@ -354,14 +380,21 @@ await Actor.main(async () => {
             const carLinks = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[data-testid="car-blade-link"]'));
                 const baseUrl = window.location.origin;
-                // Convert hash links to full URLs: #listing=123 → https://cargurus.ca/Cars/link/vdp.action#listing=123
+
                 return [...new Set(links.map(a => {
                     const href = a.getAttribute('href');
-                    if (href && href.startsWith('#')) {
-                        return `${baseUrl}/Cars/link/vdp.action${href}`;
+
+                    // Handle hash-based links: #listing=433035737/NONE/DEFAULT
+                    if (href && href.startsWith('#listing=')) {
+                        // Extract listing ID from hash
+                        const listingId = href.replace('#listing=', '').split('/')[0];
+                        // Construct proper VDP URL
+                        return `${baseUrl}/Cars/inventoryListing/viewDetailsFilterViewInventoryListing.action?listing=${listingId}`;
                     }
+
+                    // Return full URL if already complete
                     return a.href;
-                }))];
+                }))].filter(url => url && !url.includes('undefined'));
             });
 
             console.log(`🚗 Found ${carLinks.length} car links on page ${pageToScrape}`);
