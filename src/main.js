@@ -446,8 +446,13 @@ await Actor.main(async () => {
                             if (fuelSpec) fuelType = fuelSpec.value;
                         }
 
-                        const titleEl = document.querySelector('h1');
+                        const titleEl = document.querySelector('h1[data-cg-ft="vdp-listing-title"]');
                         const title = titleEl ? titleEl.textContent.trim() : '';
+
+                        // Extract price
+                        const priceEl = document.querySelector('div._price_1yep1_1 h2');
+                        const priceText = priceEl ? priceEl.textContent.trim() : null;
+                        const priceValue = priceText ? parseInt(priceText.replace(/[$,]/g, '')) : null;
 
                         // Extract dealer info
                         const dealerNameEl = document.querySelector('[data-testid="dealerName"]');
@@ -457,8 +462,8 @@ await Actor.main(async () => {
                         return {
                             vin,
                             title: title || preflight.listingTitle,
-                            price: preflight.listingPriceValue || listing.price,
-                            priceString: preflight.listingPriceString || listing.priceString,
+                            price: priceValue || preflight.listingPriceValue || listing.price,
+                            priceString: priceText || preflight.listingPriceString || listing.priceString,
                             year: yearEl ? yearEl.textContent.trim() : (listing.year || preflight.listingYear),
                             make: makeEl ? makeEl.textContent.trim() : (listing.make || preflight.listingMake),
                             model: modelEl ? modelEl.textContent.trim() : (listing.model || preflight.listingModel),
