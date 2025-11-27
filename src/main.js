@@ -552,24 +552,23 @@ await Actor.main(async () => {
             }
         }
 
+            // Save state after each page completes (more resilient to crashes)
+            const nextPage = pageToScrape + 1;
+            const today = new Date().toISOString().split('T')[0];
+
+            await kv.setValue('state', {
+                nextPage,
+                lastScrapedDate: today,
+                baseUrl: baseUrlWithFilters,
+                searchRadius,
+                lastScraped: new Date().toISOString(),
+                lastPage: pageToScrape,
+                pagesScraped: pagesToScrape.slice(0, pagesToScrape.indexOf(pageToScrape) + 1)
+            });
+
+            console.log(`💾 State saved: Page ${pageToScrape} complete. Next run will start at page ${nextPage} (date: ${today})`);
+
         } // End of page loop
-
-        // Save state for next run - save the next batch starting page
-        const lastPageScraped = pagesToScrape[pagesToScrape.length - 1];
-        const nextPage = lastPageScraped + 1;
-        const today = new Date().toISOString().split('T')[0];
-
-        await kv.setValue('state', {
-            nextPage,
-            lastScrapedDate: today,
-            baseUrl: baseUrlWithFilters,
-            searchRadius,
-            lastScraped: new Date().toISOString(),
-            lastPage: lastPageScraped,
-            pagesScraped: pagesToScrape
-        });
-
-        console.log(`\n💾 State saved: Next run will start at page ${nextPage} (date: ${today})`);
 
     } catch (error) {
         console.error(`❌ Error processing pages ${pagesToScrape.join(', ')}:`, error.message);
