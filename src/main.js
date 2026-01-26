@@ -507,7 +507,8 @@ await Actor.main(async () => {
                     const dataToSave = {
                         type: 'car_listing',
                         ...carData,
-                        scrapedAt: new Date().toISOString()
+                        scrapedAt: new Date().toISOString(),
+                        source_scraper: 'Best'
                     };
 
                     await Actor.pushData(dataToSave);
