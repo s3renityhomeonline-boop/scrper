@@ -383,110 +383,93 @@ await Actor.main(async () => {
         for (let listingIndex = 0; listingIndex < listingsToProcess; listingIndex++) {
             console.log(`\n🔍 Processing listing ${listingIndex + 1}/${listingsToProcess}...`);
 
+            let listingPage = null;
             try {
-                // Re-query the listing link by index (DOM may have changed)
-                const linkExists = await page.evaluate((index) => {
+                // Get listing URL from main search tab (which stays open the whole time)
+                const listingHref = await page.evaluate((index) => {
                     const links = document.querySelectorAll('a[data-testid="car-blade-link"]');
-                    return links[index] ? true : false;
+                    return links[index] ? links[index].href : null;
                 }, listingIndex);
 
-                if (!linkExists) {
+                if (!listingHref) {
                     console.log(`  ⚠️ Listing ${listingIndex + 1} not found in DOM - skipping`);
                     continue;
                 }
 
-                // Click the listing to trigger SPA detail view
-                await page.evaluate((index) => {
-                    const links = document.querySelectorAll('a[data-testid="car-blade-link"]');
-                    links[index].click();
-                }, listingIndex);
-
-                console.log(`  ✅ Clicked listing ${listingIndex + 1}`);
-
-                // Wait for SPA detail view to load
-                try {
-                    await page.waitForSelector('div[data-cg-ft="listing-vdp-stats"]', { timeout: 10000 });
-                    console.log(`  ✅ Detail view loaded`);
-                } catch (e) {
-                    console.log(`  ⚠️ Detail view not loaded: ${e.message}`);
-                    // Try to go back to search results
-                    await page.goBack();
-                    await page.waitForTimeout(2000);
-                    continue;
-                }
+                // Open listing in a new tab — search results tab stays untouched
+                listingPage = await context.newPage();
+                await listingPage.goto(listingHref, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await listingPage.waitForSelector('h1[data-cg-ft="vdp-listing-title"]', { timeout: 15000 });
+                console.log(`  ✅ Detail page loaded`);
 
                 // Small delay to let detail view fully render
-                await page.waitForTimeout(2000);
+                await listingPage.waitForTimeout(2000);
 
-                // Extract data from DOM (SPA detail view)
-                const carData = await page.evaluate(() => {
+                // Extract data from the listing tab
+                const carData = await listingPage.evaluate(() => {
                     const preflight = window.__PREFLIGHT__ || {};
                     const listing = preflight.listing || {};
 
-                        // Extract from new DOM structure first (data-cg-ft attributes)
-                        const vinEl = document.querySelector('div[data-cg-ft="vin"] span._value_ujq1z_13');
-                        const makeEl = document.querySelector('div[data-cg-ft="make"] span._value_ujq1z_13');
-                        const modelEl = document.querySelector('div[data-cg-ft="model"] span._value_ujq1z_13');
-                        const trimEl = document.querySelector('div[data-cg-ft="trim"] span._value_ujq1z_13');
-                        const yearEl = document.querySelector('div[data-cg-ft="year"] span._value_ujq1z_13');
-                        const bodyTypeEl = document.querySelector('div[data-cg-ft="bodyType"] span._value_ujq1z_13');
-                        const fuelTypeEl = document.querySelector('div[data-cg-ft="fuelType"] span._value_ujq1z_13');
-                        const mileageEl = document.querySelector('div[data-cg-ft="mileage"] span._value_ujq1z_13');
+                    const vinEl = document.querySelector('div[data-cg-ft="vin"] span._value_ujq1z_13');
+                    const makeEl = document.querySelector('div[data-cg-ft="make"] span._value_ujq1z_13');
+                    const modelEl = document.querySelector('div[data-cg-ft="model"] span._value_ujq1z_13');
+                    const trimEl = document.querySelector('div[data-cg-ft="trim"] span._value_ujq1z_13');
+                    const yearEl = document.querySelector('div[data-cg-ft="year"] span._value_ujq1z_13');
+                    const bodyTypeEl = document.querySelector('div[data-cg-ft="bodyType"] span._value_ujq1z_13');
+                    const fuelTypeEl = document.querySelector('div[data-cg-ft="fuelType"] span._value_ujq1z_13');
+                    const mileageEl = document.querySelector('div[data-cg-ft="mileage"] span._value_ujq1z_13');
 
-                        let vin = vinEl ? vinEl.textContent.trim() : (listing.vin || null);
-                        if (!vin && listing.specs) {
-                            const vinSpec = listing.specs.find(s =>
-                                s.label && s.label.toLowerCase() === 'vin'
-                            );
-                            if (vinSpec) vin = vinSpec.value;
-                        }
+                    let vin = vinEl ? vinEl.textContent.trim() : (listing.vin || null);
+                    if (!vin && listing.specs) {
+                        const vinSpec = listing.specs.find(s => s.label && s.label.toLowerCase() === 'vin');
+                        if (vinSpec) vin = vinSpec.value;
+                    }
 
-                        // Try to extract fuel type from specs if not in DOM
-                        let fuelType = fuelTypeEl ? fuelTypeEl.textContent.trim() : null;
-                        if (!fuelType && listing.specs) {
-                            const fuelSpec = listing.specs.find(s =>
-                                s.label && (
-                                    s.label.toLowerCase().includes('fuel') ||
-                                    s.label.toLowerCase().includes('engine')
-                                )
-                            );
-                            if (fuelSpec) fuelType = fuelSpec.value;
-                        }
+                    let fuelType = fuelTypeEl ? fuelTypeEl.textContent.trim() : null;
+                    if (!fuelType && listing.specs) {
+                        const fuelSpec = listing.specs.find(s =>
+                            s.label && (s.label.toLowerCase().includes('fuel') || s.label.toLowerCase().includes('engine'))
+                        );
+                        if (fuelSpec) fuelType = fuelSpec.value;
+                    }
 
-                        const titleEl = document.querySelector('h1[data-cg-ft="vdp-listing-title"]');
-                        const title = titleEl ? titleEl.textContent.trim() : '';
+                    const titleEl = document.querySelector('h1[data-cg-ft="vdp-listing-title"]');
+                    const title = titleEl ? titleEl.textContent.trim() : '';
 
-                        // Extract price
-                        const priceEl = document.querySelector('div._price_1yep1_1 h2');
-                        const priceText = priceEl ? priceEl.textContent.trim() : null;
-                        const priceValue = priceText ? parseInt(priceText.replace(/[$,]/g, '')) : null;
+                    const priceEl = document.querySelector('div._price_1yep1_1 h2');
+                    const priceText = priceEl ? priceEl.textContent.trim() : null;
+                    const priceValue = priceText ? parseInt(priceText.replace(/[$,]/g, '')) : null;
 
-                        // Extract dealer info
-                        const dealerNameEl = document.querySelector('[data-testid="dealerName"]');
-                        const locationFromTitle = document.querySelector('hgroup p.oqywn.sCSIz');
-                        const dealerAddressEl = document.querySelector('[data-testid="dealerAddress"] span[data-track-ui="dealer-address"]');
+                    const dealerNameEl = document.querySelector('[data-testid="dealerName"]');
+                    const locationFromTitle = document.querySelector('hgroup p.fIarB.SlqY9');
+                    const dealerAddressEl = document.querySelector('[data-testid="dealerAddress"] span[data-track-ui="dealer-address"]');
 
-                        return {
-                            vin,
-                            title: title || preflight.listingTitle,
-                            price: priceValue || preflight.listingPriceValue || listing.price,
-                            priceString: priceText || preflight.listingPriceString || listing.priceString,
-                            year: yearEl ? yearEl.textContent.trim() : (listing.year || preflight.listingYear),
-                            make: makeEl ? makeEl.textContent.trim() : (listing.make || preflight.listingMake),
-                            model: modelEl ? modelEl.textContent.trim() : (listing.model || preflight.listingModel),
-                            trim: trimEl ? trimEl.textContent.trim() : listing.trim,
-                            mileage: mileageEl ? mileageEl.textContent.trim() : (listing.mileage || listing.odometer),
-                            dealerName: dealerNameEl ? dealerNameEl.textContent.trim() : (listing.dealerName || preflight.listingSellerName),
-                            dealerCity: locationFromTitle ? locationFromTitle.textContent.trim() : (listing.dealerCity || preflight.listingSellerCity),
-                            dealerAddress: dealerAddressEl ? dealerAddressEl.textContent.trim() : null,
-                            dealRating: listing.dealRating || listing.dealBadge,
-                            bodyType: bodyTypeEl ? bodyTypeEl.textContent.trim() : listing.bodyType,
-                            fuelType: fuelType,
-                            url: window.location.href,
-                            source: 'dom',
-                            hasApiData: false
-                        };
-                    });
+                    return {
+                        vin,
+                        title: title || preflight.listingTitle,
+                        price: priceValue || preflight.listingPriceValue || listing.price,
+                        priceString: priceText || preflight.listingPriceString || listing.priceString,
+                        year: yearEl ? yearEl.textContent.trim() : (listing.year || preflight.listingYear),
+                        make: makeEl ? makeEl.textContent.trim() : (listing.make || preflight.listingMake),
+                        model: modelEl ? modelEl.textContent.trim() : (listing.model || preflight.listingModel),
+                        trim: trimEl ? trimEl.textContent.trim() : listing.trim,
+                        mileage: mileageEl ? mileageEl.textContent.trim() : (listing.mileage || listing.odometer),
+                        dealerName: dealerNameEl ? dealerNameEl.textContent.trim() : (listing.dealerName || preflight.listingSellerName),
+                        dealerCity: locationFromTitle ? locationFromTitle.textContent.trim() : (listing.dealerCity || preflight.listingSellerCity),
+                        dealerAddress: dealerAddressEl ? dealerAddressEl.textContent.trim() : null,
+                        dealRating: listing.dealRating || listing.dealBadge,
+                        bodyType: bodyTypeEl ? bodyTypeEl.textContent.trim() : listing.bodyType,
+                        fuelType: fuelType,
+                        url: window.location.href,
+                        source: 'dom',
+                        hasApiData: false
+                    };
+                });
+
+                // Close the listing tab — back to search results automatically
+                await listingPage.close();
+                listingPage = null;
+                console.log(`  ✅ Listing tab closed`);
 
                 // Add page metadata
                 carData.pageNumber = pageToScrape;
@@ -514,17 +497,13 @@ await Actor.main(async () => {
                     await Actor.pushData(dataToSave);
                     console.log(`  ✅ Saved to dataset`);
 
-                    // Send to webhook
                     try {
-                        const webhookUrl = 'https://n8nsaved-production.up.railway.app/webhook/cargurusb';
+                        const webhookUrl = 'https://n8nsaved-production.up.railway.app/webhook/cargurus';
                         const response = await fetch(webhookUrl, {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(dataToSave)
                         });
-
                         if (response.ok) {
                             console.log(`  📤 Sent to webhook (${response.status})`);
                         } else {
@@ -537,25 +516,14 @@ await Actor.main(async () => {
                     console.log(`  ⚠️ No data found - skipping`);
                 }
 
-                // Navigate back to search results
-                console.log(`  ← Going back to search results...`);
-                await page.goBack();
-
-                // Wait for search results to load
-                await page.waitForSelector('a[data-testid="car-blade-link"]', { timeout: 10000 });
-                console.log(`  ✅ Back to search results`);
-
                 // Random delay between cars
                 await page.waitForTimeout(2000 + Math.random() * 3000);
 
             } catch (error) {
                 console.error(`❌ Error processing listing ${listingIndex + 1}:`, error.message);
-                // Try to go back to search results if error occurred
-                try {
-                    await page.goBack();
-                    await page.waitForTimeout(2000);
-                } catch (backError) {
-                    console.error(`  ⚠️ Could not navigate back: ${backError.message}`);
+                if (listingPage) {
+                    await listingPage.close().catch(() => {});
+                    listingPage = null;
                 }
             }
         }
